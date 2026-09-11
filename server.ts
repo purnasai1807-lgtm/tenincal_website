@@ -2,12 +2,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import crypto from 'crypto';
 import fs from 'fs';
-// NOTE: 'vite' is intentionally NOT statically imported here.
-// It's a dev-only dependency and is dynamically imported below,
-// only inside the local-dev branch, so it never loads in the
-// deployed Vercel production function.
-
-const PORT = 3000;
+const configuredPort = Number.parseInt(process.env.PORT || '3000', 10);
+const PORT = Number.isInteger(configuredPort) && configuredPort > 0 ? configuredPort : 3000;
 const app = express();
 
 app.use(express.json({ limit: '5mb' }));
@@ -1234,51 +1230,32 @@ app.post('/api/system/simulate-load', handleSimulateLoad);
 app.get('/api/system/simulate-load', handleSimulateLoad);
 
 // --- Error-Handling Middleware (must be registered after all routes) ---
-// Ensures any uncaught error returns a clean JSON 500 instead of crashing
-// the function silently (Vercel best practice for Express functions).
+// Ensures any uncaught error returns a clean JSON 500 instead of crashing.
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error(err);
   if (res.headersSent) return next(err);
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// --- Vite Middleware Integration (LOCAL DEVELOPMENT ONLY) ---
-// On Vercel, process.env.VERCEL is automatically set to '1'. We never want
-// to run Vite's dev server, its WebSocket/HMR client, or Express's own
-// static-file serving inside the deployed serverless function:
-//   - Vite dev middleware assumes a persistent connection, which breaks in
-//     a stateless serverless function (this caused the "/@vite/client
-//     WebSocket closed without opened" error and the login/register 500s).
-//   - express.static()/res.sendFile() are unnecessary on Vercel — the built
-//     frontend (from `vite build`) is served directly by Vercel's CDN via
-//     the `outputDirectory` configured in vercel.json.
 async function startServer() {
-  if (!process.env.VERCEL) {
-    if (process.env.NODE_ENV !== 'production') {
-      // Dynamic import: keeps 'vite' out of the production bundle entirely.
-      const { createServer: createViteServer } = await import('vite');
-      const vite = await createViteServer({
-        server: { middlewareMode: true },
-        appType: 'spa',
-      });
-      app.use(vite.middlewares);
-    } else {
-      // Local production preview (e.g. `npm run build && npm start`).
-      const distPath = path.join(process.cwd(), 'dist');
-      app.use(express.static(distPath));
-      app.get('*', (req: Request, res: Response) => {
-        res.sendFile(path.join(distPath, 'index.html'));
-      });
-    }
-
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Synapse × WiDS Full-Stack Server running on http://0.0.0.0:${PORT}`);
+  if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req: Request, res: Response) => {
+      res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Synapse × WiDS Full-Stack Server running on http://0.0.0.0:${PORT}`);
+  });
 }
 
 startServer();
-
-// Required for Vercel's zero-config Express detection: it looks for a
-// default export of the Express app at the project root.
-export default app;
