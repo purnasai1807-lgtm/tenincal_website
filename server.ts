@@ -1266,7 +1266,10 @@ export { app };
 export default app;
 
 async function startServer() {
-  if (!process.env.VERCEL && process.env.NODE_ENV !== 'production') {
+  // Vite's dev middleware injects /@vite/client, which attempts a WebSocket
+  // connection that is not available through the deployed preview proxy.
+  // Opt into it only for explicit local development.
+  if (process.env.VITE_DEV_SERVER === 'true') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true, hmr: false },
