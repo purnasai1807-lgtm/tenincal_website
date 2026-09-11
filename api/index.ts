@@ -1,5 +1,5 @@
-import { initDb, seedAdminIfMissing } from '../db.ts';
-import { app, MASTER_ADMIN } from '../server.ts';
+import { initDb, seedAdminIfMissing } from '../db.js';
+import { app, MASTER_ADMIN } from '../server.js';
 
 // Vercel functions are stateless per cold start — cache the readiness
 // promise so table creation and admin seeding run at most once per instance.
