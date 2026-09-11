@@ -2,6 +2,31 @@ import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import crypto from 'crypto';
 import fs from 'fs';
+import {
+  initDb,
+  seedAdminIfMissing,
+  getUsers,
+  getUserByUsername,
+  getUserByEmail,
+  getUserByUsernameOrEmail,
+  insertUser,
+  getEvents,
+  getEventById,
+  insertEvent,
+  updateEvent as dbUpdateEvent,
+  deleteEvent as dbDeleteEvent,
+  incrementEventRegisteredCount,
+  getRegistrations,
+  getRegistrationsByEvent,
+  getRegistrationById,
+  insertRegistration,
+  updateRegistration as dbUpdateRegistration,
+  deleteRegistration as dbDeleteRegistration,
+  deleteRegistrationsByEvent,
+  type StoredUser,
+  type StoredEvent,
+  type StoredRegistration,
+} from './db';
 const configuredPort = Number.parseInt(process.env.PORT || '3000', 10);
 const PORT = Number.isInteger(configuredPort) && configuredPort > 0 ? configuredPort : 3000;
 const app = express();
@@ -127,94 +152,21 @@ app.use((req, res, next) => {
   next();
 });
 
-// --- In-Memory & Encrypted Persistent Database ---
-interface StoredUser {
-  id: string;
-  username: string;
-  passwordHash: string;
-  fullName: string;
-  email: string;
-  role: 'admin' | 'user';
-  rollNumber?: string;
-  year?: string;
-  section?: string;
-  createdAt: string;
-}
+// --- Persistent Database (Postgres via db.ts) ---
+// User/Event/Registration types are imported from ./db.
 
-interface StoredRegistration {
-  id: string;
-  registrationId: string;
-  fullName: string;
-  emailEncrypted: string;
-  phoneEncrypted: string;
-  rollNumber: string;
-  year: '1st Year' | '2nd Year' | '3rd Year' | '4th Year';
-  section: 'A' | 'B' | 'C' | 'D' | 'Other';
-  eventId: string;
-  eventTitle: string;
-  ticketTier: string;
-  ticketPrice: number;
-  paymentStatus: 'free_confirmed' | 'paid' | 'pending';
-  paymentIdEncrypted?: string;
-  registeredAt: string;
-  attended: boolean;
-  checkInTime?: string;
-  notes?: string;
-}
+// Master Admin Account (seeded idempotently on startup — see startServer())
+const MASTER_ADMIN: StoredUser = {
+  id: 'usr-admin-purnasai',
+  username: 'purnasai0718',
+  passwordHash: hashPassword('Synapse_Club_2k26_tech'),
+  fullName: 'Purna Sai',
+  email: 'purnasai792@gmail.com',
+  role: 'admin',
+  createdAt: '2026-09-01T10:00:00Z',
+};
 
-// Master Admin Account
-const users: StoredUser[] = [
-  {
-    id: 'usr-admin-purnasai',
-    username: 'purnasai0718',
-    passwordHash: hashPassword('Synapse_Club_2k26_tech'),
-    fullName: 'Purna Sai',
-    email: 'purnasai792@gmail.com',
-    role: 'admin',
-    createdAt: '2026-09-01T10:00:00Z',
-  },
-];
 
-// Technical Event Model
-interface StoredEvent {
-  id: string;
-  title: string;
-  category: 'workshop' | 'hackathon' | 'bootcamp' | 'seminar';
-  tagline: string;
-  description: string;
-  organizer: string;
-  coOrganizer?: string;
-  dates: string;
-  venue: string;
-  targetAudience: string;
-  price: number;
-  capacity: number;
-  registeredCount: number;
-  topics: string[];
-  schedule: {
-    day: string;
-    title: string;
-    time: string;
-    description: string;
-  }[];
-  speakers: {
-    name: string;
-    role: string;
-    organization: string;
-    avatar: string;
-  }[];
-  isFlagship?: boolean;
-  createdAt?: string;
-  createdBy?: string;
-}
-
-// Technical Events Catalog (Events posted by Administrator)
-let events: StoredEvent[] = [];
-
-// Student Registrations Database (Populated as real students register)
-let registrations: StoredRegistration[] = [];
-
-// System Notifications
 let notifications: {
   id: string;
   eventId: string;
@@ -328,7 +280,7 @@ app.get('/api/health', (req: Request, res: Response) => {
 });
 
 // Auth: Login
-app.post('/api/auth/login', (req: Request, res: Response) => {
+app.post('/api/auth/login', async (req: Request, res: Response) => {
   const { usernameOrEmail, password } = req.body;
   
   if (!usernameOrEmail || !password) {
@@ -336,9 +288,7 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
   }
   
   const cleanInput = usernameOrEmail.trim().toLowerCase();
-  const user = users.find(
-    (u) => u.username.toLowerCase() === cleanInput || u.email.toLowerCase() === cleanInput
-  );
+  const user = await getUserByUsernameOrEmail(cleanInput);
   
   if (!user || !verifyPassword(password, user.passwordHash)) {
     return res.status(401).json({ error: 'Invalid credentials. Please check username/email and password.' });
@@ -373,16 +323,15 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
 });
 
 // Auth: Register New Student Account
-app.post('/api/auth/register', (req: Request, res: Response) => {
+app.post('/api/auth/register', async (req: Request, res: Response) => {
   const { username, email, password, fullName, rollNumber, year, section } = req.body;
   
   if (!username || !email || !password || !fullName) {
     return res.status(400).json({ error: 'Full name, username, email, and password are required.' });
   }
   
-  const existing = users.find(
-    (u) => u.username.toLowerCase() === username.trim().toLowerCase() || u.email.toLowerCase() === email.trim().toLowerCase()
-  );
+  const existing =
+    (await getUserByUsername(username.trim())) || (await getUserByEmail(email.trim()));
   if (existing) {
     return res.status(409).json({ error: 'Username or email already exists. Please login instead.' });
   }
@@ -400,7 +349,7 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
     createdAt: new Date().toISOString(),
   };
   
-  users.push(newUser);
+  await insertUser(newUser);
   
   const token = signJwt({
     id: newUser.id,
@@ -446,7 +395,8 @@ app.post('/api/auth/logout', authenticateToken, (req: AuthRequest, res: Response
 });
 
 // Events Catalog
-app.get('/api/events', (req: Request, res: Response) => {
+app.get('/api/events', async (req: Request, res: Response) => {
+  const [events, registrations] = await Promise.all([getEvents(), getRegistrations()]);
   // Update registered count dynamically
   const enriched = events.map((ev) => {
     const count = registrations.filter((r) => r.eventId === ev.id).length;
@@ -458,17 +408,17 @@ app.get('/api/events', (req: Request, res: Response) => {
   res.json(enriched);
 });
 
-app.get('/api/events/:id', (req: Request, res: Response) => {
-  const ev = events.find((e) => e.id === req.params.id);
+app.get('/api/events/:id', async (req: Request, res: Response) => {
+  const ev = await getEventById(req.params.id);
   if (!ev) {
     return res.status(404).json({ error: 'Event not found.' });
   }
-  const count = registrations.filter((r) => r.eventId === ev.id).length;
-  res.json({ ...ev, registeredCount: Math.max(ev.registeredCount, count) });
+  const eventRegs = await getRegistrationsByEvent(ev.id);
+  res.json({ ...ev, registeredCount: Math.max(ev.registeredCount, eventRegs.length) });
 });
 
 // Student Event Registration (with strict validation & duplicate prevention)
-app.post('/api/register', (req: Request, res: Response) => {
+app.post('/api/register', async (req: Request, res: Response) => {
   const {
     fullName,
     email,
@@ -511,10 +461,11 @@ app.post('/api/register', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Section is required.' });
   }
   
+  const events = await getEvents();
   if (events.length === 0) {
     return res.status(400).json({ error: 'No technical events are currently open for registration.' });
   }
-  const targetEvent = events.find((e) => e.id === eventId) || events[0];
+  const targetEvent = (eventId && (await getEventById(eventId))) || events[0];
   if (!targetEvent) {
     return res.status(404).json({ error: 'Selected technical event could not be found.' });
   }
@@ -522,10 +473,10 @@ app.post('/api/register', (req: Request, res: Response) => {
   const cleanEmail = email.trim().toLowerCase();
   
   // Duplicate check: Same roll number or same email for this specific event
-  const duplicate = registrations.find(
+  const eventRegs = await getRegistrationsByEvent(targetEvent.id);
+  const duplicate = eventRegs.find(
     (r) =>
-      r.eventId === targetEvent.id &&
-      (r.rollNumber.toUpperCase() === cleanRoll || decryptField(r.emailEncrypted).toLowerCase() === cleanEmail)
+      r.rollNumber.toUpperCase() === cleanRoll || decryptField(r.emailEncrypted).toLowerCase() === cleanEmail
   );
   
   if (duplicate) {
@@ -536,8 +487,9 @@ app.post('/api/register', (req: Request, res: Response) => {
   }
   
   // Generate structured registration ID (e.g. WIDS26-00438, HACK26-00109)
+  const allRegistrations = await getRegistrations();
   const prefix = targetEvent.id.includes('wids') ? 'WIDS26' : targetEvent.id.includes('hack') ? 'HACK26' : 'SYNAPSE26';
-  const seqNumber = String(registrations.length + 420).padStart(5, '0');
+  const seqNumber = String(allRegistrations.length + 420).padStart(5, '0');
   const registrationId = `${prefix}-${seqNumber}`;
   
   const newReg: StoredRegistration = {
@@ -560,8 +512,8 @@ app.post('/api/register', (req: Request, res: Response) => {
     notes: notes ? notes.trim() : undefined,
   };
   
-  registrations.push(newReg);
-  targetEvent.registeredCount++;
+  await insertRegistration(newReg);
+  await incrementEventRegisteredCount(targetEvent.id);
   
   // Automated notification generated for attendee
   notifications.unshift({
@@ -582,11 +534,12 @@ app.post('/api/register', (req: Request, res: Response) => {
 });
 
 // Attendee's Own Registrations (Filtered by token user email/roll or query)
-app.get('/api/my-registrations', authenticateToken, (req: AuthRequest, res: Response) => {
+app.get('/api/my-registrations', authenticateToken, async (req: AuthRequest, res: Response) => {
   const user = req.user;
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   
-  const myRegs = registrations
+  const allRegistrations = await getRegistrations();
+  const myRegs = allRegistrations
     .filter((r) => {
       const email = decryptField(r.emailEncrypted).toLowerCase();
       const matchesEmail = email === user.email.toLowerCase();
@@ -606,7 +559,7 @@ app.get('/api/notifications', (req: Request, res: Response) => {
 // --- ADMIN ENDPOINTS (Protected by requireAdmin) ---
 
 // Admin: Post / Create New Technical Event
-app.post('/api/admin/events', requireAdmin, (req: AuthRequest, res: Response) => {
+app.post('/api/admin/events', requireAdmin, async (req: AuthRequest, res: Response) => {
   const {
     title,
     category = 'workshop',
@@ -664,7 +617,7 @@ app.post('/api/admin/events', requireAdmin, (req: AuthRequest, res: Response) =>
     createdBy: req.user?.username || 'admin',
   };
 
-  events.unshift(newEvent);
+  await insertEvent(newEvent);
 
   // Auto-broadcast announcement notification
   notifications.unshift({
@@ -685,14 +638,13 @@ app.post('/api/admin/events', requireAdmin, (req: AuthRequest, res: Response) =>
 });
 
 // Admin: Edit / Update Technical Event
-app.put('/api/admin/events/:id', requireAdmin, (req: AuthRequest, res: Response) => {
+app.put('/api/admin/events/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   const eventId = req.params.id;
-  const index = events.findIndex((e) => e.id === eventId);
-  if (index === -1) {
+  const existing = await getEventById(eventId);
+  if (!existing) {
     return res.status(404).json({ error: 'Event not found.' });
   }
 
-  const existing = events[index];
   const {
     title,
     category,
@@ -730,7 +682,7 @@ app.put('/api/admin/events/:id', requireAdmin, (req: AuthRequest, res: Response)
     isFlagship: isFlagship !== undefined ? Boolean(isFlagship) : existing.isFlagship,
   };
 
-  events[index] = updated;
+  await dbUpdateEvent(eventId, updated);
 
   res.json({
     success: true,
@@ -740,28 +692,27 @@ app.put('/api/admin/events/:id', requireAdmin, (req: AuthRequest, res: Response)
 });
 
 // Admin: Delete Technical Event
-app.delete('/api/admin/events/:id', requireAdmin, (req: AuthRequest, res: Response) => {
+app.delete('/api/admin/events/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   const eventId = req.params.id;
-  const index = events.findIndex((e) => e.id === eventId);
-  if (index === -1) {
+  const removed = await dbDeleteEvent(eventId);
+  if (!removed) {
     return res.status(404).json({ error: 'Event not found.' });
   }
 
-  const removed = events.splice(index, 1)[0];
-  const initialRegCount = registrations.length;
-  registrations = registrations.filter((r) => r.eventId !== eventId);
+  const deletedCount = await deleteRegistrationsByEvent(eventId);
 
   res.json({
     success: true,
-    message: `Event "${removed.title}" and ${initialRegCount - registrations.length} registration(s) deleted.`,
+    message: `Event "${removed.title}" and ${deletedCount} registration(s) deleted.`,
   });
 });
 
 // Admin: Get all student registrations with search, filter, sort
-app.get('/api/admin/students', requireAdmin, (req: Request, res: Response) => {
+app.get('/api/admin/students', requireAdmin, async (req: Request, res: Response) => {
   const { search, year, section, eventId, sort, attended } = req.query;
   
-  let list = registrations.map(formatRegistration);
+  const allRegistrations = await getRegistrations();
+  let list = allRegistrations.map(formatRegistration);
   
   if (search && typeof search === 'string') {
     const q = search.trim().toLowerCase();
@@ -810,8 +761,8 @@ app.get('/api/admin/students', requireAdmin, (req: Request, res: Response) => {
 });
 
 // Admin: Get single student detail
-app.get('/api/admin/students/:id', requireAdmin, (req: Request, res: Response) => {
-  const found = registrations.find((r) => r.id === req.params.id || r.registrationId === req.params.id);
+app.get('/api/admin/students/:id', requireAdmin, async (req: Request, res: Response) => {
+  const found = await getRegistrationById(req.params.id);
   if (!found) {
     return res.status(404).json({ error: 'Student registration not found.' });
   }
@@ -819,20 +770,23 @@ app.get('/api/admin/students/:id', requireAdmin, (req: Request, res: Response) =
 });
 
 // Admin: Toggle student check-in
-app.patch('/api/admin/students/:id/checkin', requireAdmin, (req: Request, res: Response) => {
-  const found = registrations.find((r) => r.id === req.params.id || r.registrationId === req.params.id);
+app.patch('/api/admin/students/:id/checkin', requireAdmin, async (req: Request, res: Response) => {
+  const found = await getRegistrationById(req.params.id);
   if (!found) {
     return res.status(404).json({ error: 'Registration not found.' });
   }
   
-  found.attended = !found.attended;
-  found.checkInTime = found.attended ? new Date().toISOString() : undefined;
+  const nextAttended = !found.attended;
+  const updated = await dbUpdateRegistration(found.id, {
+    attended: nextAttended,
+    checkInTime: nextAttended ? new Date().toISOString() : undefined,
+  });
   
   res.json({
     success: true,
-    attended: found.attended,
-    checkInTime: found.checkInTime,
-    registration: formatRegistration(found),
+    attended: updated?.attended ?? nextAttended,
+    checkInTime: updated?.checkInTime,
+    registration: updated ? formatRegistration(updated) : undefined,
   });
 });
 
@@ -847,15 +801,15 @@ function getEventVenueToken(eventId: string): string {
 }
 
 // Get QR Code & Venue Check-in Metadata for an event
-app.get('/api/events/:id/qr-info', (req: Request, res: Response) => {
+app.get('/api/events/:id/qr-info', async (req: Request, res: Response) => {
   const eventId = req.params.id;
-  const targetEvent = events.find((e) => e.id === eventId);
+  const targetEvent = await getEventById(eventId);
   if (!targetEvent) {
     return res.status(404).json({ error: 'Event not found.' });
   }
 
   const token = getEventVenueToken(eventId);
-  const eventRegs = registrations.filter((r) => r.eventId === eventId);
+  const eventRegs = await getRegistrationsByEvent(eventId);
   const attendedRegs = eventRegs.filter((r) => r.attended);
 
   res.json({
@@ -876,9 +830,9 @@ app.get('/api/events/:id/qr-info', (req: Request, res: Response) => {
 });
 
 // Admin: Refresh Venue Security Token
-app.post('/api/events/:id/refresh-token', requireAdmin, (req: Request, res: Response) => {
+app.post('/api/events/:id/refresh-token', requireAdmin, async (req: Request, res: Response) => {
   const eventId = req.params.id;
-  const targetEvent = events.find((e) => e.id === eventId);
+  const targetEvent = await getEventById(eventId);
   if (!targetEvent) {
     return res.status(404).json({ error: 'Event not found.' });
   }
@@ -895,11 +849,11 @@ app.post('/api/events/:id/refresh-token', requireAdmin, (req: Request, res: Resp
 });
 
 // Student Venue Check-In (Scanned via Event QR Code or Entered at Venue Desk)
-app.post('/api/events/:id/venue-checkin', (req: Request, res: Response) => {
+app.post('/api/events/:id/venue-checkin', async (req: Request, res: Response) => {
   const eventId = req.params.id;
   const { identifier, token } = req.body;
 
-  const targetEvent = events.find((e) => e.id === eventId);
+  const targetEvent = await getEventById(eventId);
   if (!targetEvent) {
     return res.status(404).json({ error: 'Technical event not found.' });
   }
@@ -911,8 +865,8 @@ app.post('/api/events/:id/venue-checkin', (req: Request, res: Response) => {
   const q = identifier.trim().toLowerCase();
 
   // Find matching registered student for this event
-  const student = registrations.find((r) => {
-    if (r.eventId !== eventId) return false;
+  const eventRegs = await getRegistrationsByEvent(eventId);
+  const student = eventRegs.find((r) => {
     if (r.rollNumber.toLowerCase() === q) return true;
     if (r.registrationId.toLowerCase() === q) return true;
     if (r.id.toLowerCase() === q) return true;
@@ -949,15 +903,17 @@ app.post('/api/events/:id/venue-checkin', (req: Request, res: Response) => {
   }
 
   // Confirm attendance
-  student.attended = true;
-  student.checkInTime = now;
+  const updated = await dbUpdateRegistration(student.id, {
+    attended: true,
+    checkInTime: now,
+  });
 
   return res.json({
     success: true,
     newlyCheckedIn: true,
     message: `Attendance Confirmed! Welcome to ${targetEvent.title}, ${student.fullName}!`,
-    student: formatRegistration(student),
-    checkInTime: student.checkInTime,
+    student: formatRegistration(updated ?? { ...student, attended: true, checkInTime: now }),
+    checkInTime: updated?.checkInTime ?? now,
     event: {
       id: targetEvent.id,
       title: targetEvent.title,
@@ -968,13 +924,12 @@ app.post('/api/events/:id/venue-checkin', (req: Request, res: Response) => {
 });
 
 // Admin: Delete registration with confirmation
-app.delete('/api/admin/students/:id', requireAdmin, (req: Request, res: Response) => {
-  const index = registrations.findIndex((r) => r.id === req.params.id || r.registrationId === req.params.id);
-  if (index === -1) {
+app.delete('/api/admin/students/:id', requireAdmin, async (req: Request, res: Response) => {
+  const removed = await dbDeleteRegistration(req.params.id);
+  if (!removed) {
     return res.status(404).json({ error: 'Registration not found.' });
   }
   
-  const removed = registrations.splice(index, 1)[0];
   res.json({
     success: true,
     message: `Registration ${removed.registrationId} for ${removed.fullName} has been removed.`,
@@ -982,8 +937,9 @@ app.delete('/api/admin/students/:id', requireAdmin, (req: Request, res: Response
 });
 
 // Admin: CSV Export endpoint as requested in PDF page 5, 8, 19
-const handleExportCsv = (req: Request, res: Response) => {
-  const list = registrations.map(formatRegistration);
+const handleExportCsv = async (req: Request, res: Response) => {
+  const allRegistrations = await getRegistrations();
+  const list = allRegistrations.map(formatRegistration);
   
   const headers = ['Registration ID', 'Full Name', 'Email', 'Phone', 'Roll Number', 'Year', 'Section', 'Event', 'Ticket Tier', 'Payment Status', 'Registered At', 'Attended'];
   const csvRows = [headers.join(',')];
@@ -1016,7 +972,8 @@ app.get('/api/admin/export', requireAdmin, handleExportCsv);
 app.get('/api/admin/export/csv', requireAdmin, handleExportCsv);
 
 // Admin: Comprehensive Analytics for Organizers
-app.get('/api/admin/analytics', requireAdmin, (req: Request, res: Response) => {
+app.get('/api/admin/analytics', requireAdmin, async (req: Request, res: Response) => {
+  const [registrations, events] = await Promise.all([getRegistrations(), getEvents()]);
   const total = registrations.length;
   const firstYear = registrations.filter((r) => r.year === '1st Year').length;
   const secondYear = registrations.filter((r) => r.year === '2nd Year').length;
@@ -1056,6 +1013,7 @@ app.get('/api/admin/analytics', requireAdmin, (req: Request, res: Response) => {
   windowStart.setDate(windowStart.getDate() - 13);
   const windowStartStr = windowStart.toISOString().slice(0, 10);
   cumulativeCount = registrations.filter((r) => r.registeredAt.slice(0, 10) < windowStartStr).length;
+
 
   for (let i = 13; i >= 0; i--) {
     const d = new Date();
@@ -1238,6 +1196,9 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 async function startServer() {
+  await initDb();
+  await seedAdminIfMissing(MASTER_ADMIN);
+
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({

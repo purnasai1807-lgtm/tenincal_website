@@ -12,3 +12,5 @@ services:
         generateValue: true
       - key: PORT
         value: 10000
+      - key: POSTGRES_URL
+        sync: false
