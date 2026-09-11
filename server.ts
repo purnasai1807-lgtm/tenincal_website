@@ -26,7 +26,7 @@ import {
   type StoredUser,
   type StoredEvent,
   type StoredRegistration,
-} from './db';
+} from './db.js';
 const configuredPort = Number.parseInt(process.env.PORT || '3000', 10);
 const PORT = Number.isInteger(configuredPort) && configuredPort > 0 ? configuredPort : 3000;
 const app = express();
