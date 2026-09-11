@@ -1145,6 +1145,38 @@ const handleExportCsv = async (req: Request, res: Response) => {
 app.get('/api/admin/export', requireAdmin, handleExportCsv);
 app.get('/api/admin/export/csv', requireAdmin, handleExportCsv);
 
+// Admin-only export of login accounts. Password hashes are never exported.
+app.get('/api/admin/login-accounts/export', requireAdmin, async (req: Request, res: Response) => {
+  const users = await getUsers();
+  const csvValue = (value: unknown): string => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const headers = [
+    'User ID',
+    'Username',
+    'Email',
+    'Full Name',
+    'Role',
+    'Roll Number',
+    'Year',
+    'Section',
+    'Account Created At',
+  ];
+  const rows = users.map((user) => [
+    user.id,
+    user.username,
+    user.email,
+    user.fullName,
+    user.role,
+    user.rollNumber,
+    user.year,
+    user.section,
+    formatIndiaTimestamp(user.createdAt),
+  ].map(csvValue).join(','));
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="PortalPulse_Login_Accounts.csv"');
+  res.status(200).send([headers.map(csvValue).join(','), ...rows].join('\n'));
+});
+
 // Admin: Comprehensive Analytics for Organizers
 app.get('/api/admin/analytics', requireAdmin, async (req: Request, res: Response) => {
   const [registrations, events] = await Promise.all([getRegistrations(), getEvents()]);

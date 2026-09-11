@@ -182,6 +182,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const handleDownloadLoginAccountsCsv = async () => {
+    try {
+      const url = await api.getDownloadLoginAccountsCsvUrl();
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'PortalPulse_Login_Accounts.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err.message || 'Login accounts CSV download failed.');
+    }
+  };
+
   // Handle Broadcast Notification
   const handleBroadcast = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -313,6 +328,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
             <span>Export CSV</span>
+          </button>
+
+          <button
+            onClick={handleDownloadLoginAccountsCsv}
+            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-500/40 flex items-center gap-1.5 transition-colors shadow-sm"
+            title="Download login accounts CSV (admin only)"
+          >
+            <Lock className="w-4 h-4 text-indigo-400" />
+            <span>Login Accounts CSV</span>
           </button>
 
           <button

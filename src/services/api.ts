@@ -224,6 +224,18 @@ export const api = {
     return URL.createObjectURL(blob);
   },
 
+  async getDownloadLoginAccountsCsvUrl(): Promise<string> {
+    const token = authStorage.getToken();
+    const res = await fetch('/api/admin/login-accounts/export', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!res.ok) throw new Error('Failed to download login accounts CSV');
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
+
   // High-concurrency metrics
   async getLoadMetrics(): Promise<LoadBalancerMetrics> {
     return apiFetch<LoadBalancerMetrics>('/api/system/load-metrics');
