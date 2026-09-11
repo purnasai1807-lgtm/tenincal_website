@@ -1078,6 +1078,14 @@ app.delete('/api/admin/students/:id', requireAdmin, async (req: Request, res: Re
 });
 
 // Admin: CSV Export endpoint as requested in PDF page 5, 8, 19
+const formatIndiaTimestamp = (value: string): string =>
+  new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    dateStyle: 'medium',
+    timeStyle: 'medium',
+    hour12: true,
+  }).format(new Date(value)) + ' IST';
+
 const handleExportCsv = async (req: Request, res: Response) => {
   const allRegistrations = await getRegistrations();
   const scanSummary = await getQrScanSummary();
@@ -1098,13 +1106,13 @@ const handleExportCsv = async (req: Request, res: Response) => {
       `"${s.eventTitle.replace(/"/g, '""')}"`,
       `"${s.ticketTier}"`,
       `"${s.paymentStatus}"`,
-      `"${new Date(s.registeredAt).toLocaleString()}"`,
+      `"${formatIndiaTimestamp(s.registeredAt)}"`,
       `"${s.attended ? 'Yes' : 'No'}"`,
       `"${scanSummary.get(s.id)?.total || 0}"`,
       `"${scanSummary.get(s.id)?.checkInCount || 0}"`,
-      `"${(scanSummary.get(s.id)?.checkInTimes || []).map((time) => new Date(time).toLocaleString()).join('; ')}"`,
+      `"${(scanSummary.get(s.id)?.checkInTimes || []).map(formatIndiaTimestamp).join('; ')}"`,
       `"${scanSummary.get(s.id)?.checkOutCount || 0}"`,
-      `"${(scanSummary.get(s.id)?.checkOutTimes || []).map((time) => new Date(time).toLocaleString()).join('; ')}"`,
+      `"${(scanSummary.get(s.id)?.checkOutTimes || []).map(formatIndiaTimestamp).join('; ')}"`,
     ];
     csvRows.push(row.join(','));
   });
