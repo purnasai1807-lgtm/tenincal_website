@@ -4,7 +4,8 @@ import crypto from 'crypto';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 
-const PORT = 3000;
+const configuredPort = Number.parseInt(process.env.PORT || '3000', 10);
+const PORT = Number.isInteger(configuredPort) && configuredPort > 0 ? configuredPort : 3000;
 const app = express();
 
 app.use(express.json({ limit: '5mb' }));

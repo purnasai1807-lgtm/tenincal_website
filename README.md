@@ -18,3 +18,7 @@ View your app in AI Studio: https://ai.studio/apps/458126c5-f4f0-4b77-a18e-b03b7
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+If port 3000 is already in use, run the server on another port:
+
+`$env:PORT=3001; npm run dev`
