@@ -14,7 +14,9 @@ import {
   DollarSign,
   Layers,
   Code2,
-  Check
+  Check,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react';
 import { EventItem, EventCategory } from '../types';
 import { api } from '../services/api';
@@ -47,6 +49,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
   const [capacity, setCapacity] = useState(150);
   const [topicsString, setTopicsString] = useState('');
   const [isFlagship, setIsFlagship] = useState(false);
+  const [imageUrl, setImageUrl] = useState('');
 
   // Schedule items
   const [schedule, setSchedule] = useState<{ day: string; title: string; time: string; description: string }[]>([]);
@@ -72,6 +75,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
       setCapacity(initialData.capacity || 100);
       setTopicsString(initialData.topics ? initialData.topics.join(', ') : '');
       setIsFlagship(Boolean(initialData.isFlagship));
+      setImageUrl(initialData.imageUrl || '');
       setSchedule(initialData.schedule || []);
       setSpeakers(initialData.speakers || []);
     } else {
@@ -89,6 +93,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
       setCapacity(150);
       setTopicsString('');
       setIsFlagship(false);
+      setImageUrl('');
       setSchedule([]);
       setSpeakers([]);
     }
@@ -225,6 +230,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
         schedule,
         speakers,
         isFlagship,
+        imageUrl: imageUrl || undefined,
       };
 
       let result;
@@ -307,6 +313,45 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
               </div>
             </div>
           )}
+
+          <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/70">
+            <div className="flex items-center gap-2 mb-2">
+              <ImageIcon className="w-4 h-4 text-cyan-400" />
+              <span className="text-xs font-semibold text-slate-200">Event image (optional)</span>
+            </div>
+            <p className="text-[11px] text-slate-400 mb-3">
+              Upload the real event poster or banner. If you do not upload one, no image will be shown.
+            </p>
+            <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-xs font-semibold cursor-pointer hover:bg-cyan-500/25">
+              <Upload className="w-3.5 h-3.5" />
+              Choose image
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 5 * 1024 * 1024) {
+                    setError('Event image must be smaller than 5 MB.');
+                    e.currentTarget.value = '';
+                    return;
+                  }
+                  const reader = new FileReader();
+                  reader.onload = () => setImageUrl(String(reader.result));
+                  reader.readAsDataURL(file);
+                }}
+              />
+            </label>
+            {imageUrl && (
+              <div className="mt-3 flex items-center gap-3">
+                <img src={imageUrl} alt="Event preview" className="w-24 h-14 object-cover rounded-lg border border-slate-600" />
+                <button type="button" onClick={() => setImageUrl('')} className="text-xs text-rose-300 hover:text-rose-200">
+                  Remove image
+                </button>
+              </div>
+            )}
+          </div>
 
           {error && (
             <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium">

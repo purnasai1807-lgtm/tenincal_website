@@ -634,6 +634,7 @@ app.post('/api/admin/events', requireAdmin, async (req: AuthRequest, res: Respon
     schedule = [],
     speakers = [],
     isFlagship = false,
+    imageUrl,
   } = req.body;
 
   if (!title || typeof title !== 'string' || title.trim().length < 3) {
@@ -642,6 +643,13 @@ app.post('/api/admin/events', requireAdmin, async (req: AuthRequest, res: Respon
 
   if (!dates || !venue) {
     return res.status(400).json({ error: 'Dates and venue are required for the technical event.' });
+  }
+  if (imageUrl !== undefined && imageUrl !== null && (
+    typeof imageUrl !== 'string' ||
+    !/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+=*$/.test(imageUrl) ||
+    imageUrl.length > 7_000_000
+  )) {
+    return res.status(400).json({ error: 'Event image must be a PNG, JPG, or WebP image smaller than 5 MB.' });
   }
 
   // Generate URL slug ID
@@ -671,6 +679,7 @@ app.post('/api/admin/events', requireAdmin, async (req: AuthRequest, res: Respon
     schedule: Array.isArray(schedule) ? schedule : [],
     speakers: Array.isArray(speakers) ? speakers : [],
     isFlagship: Boolean(isFlagship),
+    imageUrl: imageUrl || undefined,
     createdAt: new Date().toISOString(),
     createdBy: req.user?.username || 'admin',
   };
@@ -719,6 +728,7 @@ app.put('/api/admin/events/:id', requireAdmin, async (req: AuthRequest, res: Res
     schedule,
     speakers,
     isFlagship,
+    imageUrl,
   } = req.body;
 
   const updated: StoredEvent = {
@@ -738,7 +748,15 @@ app.put('/api/admin/events/:id', requireAdmin, async (req: AuthRequest, res: Res
     schedule: schedule !== undefined ? schedule : existing.schedule,
     speakers: speakers !== undefined ? speakers : existing.speakers,
     isFlagship: isFlagship !== undefined ? Boolean(isFlagship) : existing.isFlagship,
+    imageUrl: imageUrl !== undefined ? imageUrl || undefined : existing.imageUrl,
   };
+  if (imageUrl !== undefined && imageUrl !== null && (
+    typeof imageUrl !== 'string' ||
+    !/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+=*$/.test(imageUrl) ||
+    imageUrl.length > 7_000_000
+  )) {
+    return res.status(400).json({ error: 'Event image must be a PNG, JPG, or WebP image smaller than 5 MB.' });
+  }
 
   await dbUpdateEvent(eventId, updated);
 

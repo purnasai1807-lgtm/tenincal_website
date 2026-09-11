@@ -50,6 +50,7 @@ export interface EventItem {
     avatar: string;
   }[];
   isFlagship?: boolean;
+  imageUrl?: string;
 }
 
 export interface StudentRegistration {

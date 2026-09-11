@@ -58,6 +58,7 @@ export interface StoredEvent {
     avatar: string;
   }[];
   isFlagship?: boolean;
+  imageUrl?: string;
   createdAt?: string;
   createdBy?: string;
 }
@@ -140,10 +141,12 @@ export async function initDb(): Promise<void> {
       schedule JSONB NOT NULL DEFAULT '[]',
       speakers JSONB NOT NULL DEFAULT '[]',
       is_flagship BOOLEAN NOT NULL DEFAULT false,
+      image_url TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       created_by TEXT
     );
   `);
+  await query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS image_url TEXT;`);
 
   await query(`
     CREATE TABLE IF NOT EXISTS registrations (
@@ -290,6 +293,7 @@ function rowToEvent(row: any): StoredEvent {
     schedule: row.schedule ?? [],
     speakers: row.speakers ?? [],
     isFlagship: row.is_flagship,
+    imageUrl: row.image_url ?? undefined,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     createdBy: row.created_by ?? undefined,
   };
@@ -395,8 +399,8 @@ export async function insertEvent(event: StoredEvent): Promise<StoredEvent> {
     `INSERT INTO events (
        id, title, category, tagline, description, organizer, co_organizer, dates, venue,
        target_audience, price, capacity, registered_count, topics, schedule, speakers,
-       is_flagship, created_at, created_by
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+       is_flagship, image_url, created_at, created_by
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
     [
       event.id,
       event.title,
@@ -415,6 +419,7 @@ export async function insertEvent(event: StoredEvent): Promise<StoredEvent> {
       JSON.stringify(event.schedule ?? []),
       JSON.stringify(event.speakers ?? []),
       Boolean(event.isFlagship),
+      event.imageUrl ?? null,
       event.createdAt ?? new Date().toISOString(),
       event.createdBy ?? null,
     ]
@@ -427,7 +432,7 @@ export async function updateEvent(id: string, updated: StoredEvent): Promise<Sto
     `UPDATE events SET
        title = $2, category = $3, tagline = $4, description = $5, organizer = $6,
        co_organizer = $7, dates = $8, venue = $9, target_audience = $10, price = $11,
-       capacity = $12, topics = $13, schedule = $14, speakers = $15, is_flagship = $16
+       capacity = $12, topics = $13, schedule = $14, speakers = $15, is_flagship = $16, image_url = $17
      WHERE id = $1
      RETURNING *`,
     [
@@ -447,6 +452,7 @@ export async function updateEvent(id: string, updated: StoredEvent): Promise<Sto
       JSON.stringify(updated.schedule ?? []),
       JSON.stringify(updated.speakers ?? []),
       Boolean(updated.isFlagship),
+      updated.imageUrl ?? null,
     ]
   );
   return res.rows[0] ? rowToEvent(res.rows[0]) : undefined;

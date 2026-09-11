@@ -125,6 +125,13 @@ export const EventCatalog: React.FC<EventCatalogProps> = ({
                 className="group relative rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 p-6 flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:shadow-cyan-500/5"
               >
                 <div>
+                  {event.imageUrl && (
+                    <img
+                      src={event.imageUrl}
+                      alt={`${event.title} event poster`}
+                      className="w-full h-44 object-cover rounded-xl mb-5 border border-slate-800"
+                    />
+                  )}
                   {/* Card Header & Badge */}
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex items-center gap-2">
