@@ -10,7 +10,7 @@
 // connection string as DATABASE_URL, which is used as a fallback below.
 //
 // Pool sizing: this app currently runs as a long-lived Node process (Railway
-// service), so a small connection pool is safe. If this is ever deployed
+// service), so a bounded connection pool is safe. If this is ever deployed
 // as a stateless serverless function again (Vercel/AWS Lambda), set
 // PG_POOL_MAX=1 via env so each invocation doesn't open a new saturating
 // connection — or switch to an HTTP-based driver such as
@@ -97,7 +97,10 @@ const sslMode = process.env.PGSSL || 'require';
 
 export const pool = new Pool({
   connectionString,
-  max: Number.parseInt(process.env.PG_POOL_MAX || '5', 10),
+  max: Number.parseInt(process.env.PG_POOL_MAX || '10', 10),
+  idleTimeoutMillis: Number.parseInt(process.env.PG_IDLE_TIMEOUT_MS || '30000', 10),
+  connectionTimeoutMillis: Number.parseInt(process.env.PG_CONNECTION_TIMEOUT_MS || '10000', 10),
+  keepAlive: true,
   ssl: sslMode === 'disable' ? false : { rejectUnauthorized: false },
 });
 
@@ -191,8 +194,12 @@ export async function initDb(): Promise<void> {
   `);
   await query(`ALTER TABLE qr_scan_events ADD COLUMN IF NOT EXISTS action TEXT NOT NULL DEFAULT 'check_in';`);
   await query(`CREATE INDEX IF NOT EXISTS idx_qr_scan_events_registration ON qr_scan_events(registration_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_qr_scan_events_event_action_time ON qr_scan_events(event_id, action, scanned_at);`);
 
   await query(`CREATE INDEX IF NOT EXISTS idx_registrations_event_id ON registrations(event_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_registrations_event_attendance ON registrations(event_id, attended);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_users_lower_username ON users (lower(username));`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_users_lower_email ON users (lower(email));`);
 
   await query(`
     CREATE TABLE IF NOT EXISTS coding_tests (
