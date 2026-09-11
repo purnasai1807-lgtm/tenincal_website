@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { 
-  Terminal, 
   ShieldCheck, 
   User as UserIcon, 
   LogOut, 
@@ -43,15 +42,15 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex items-center justify-between h-16">
           {/* Brand / Logo */}
           <div 
-            className="flex items-center gap-3 cursor-pointer group"
+            className="flex items-center gap-3 cursor-pointer group min-w-0"
             onClick={() => setActiveTab('home')}
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-fuchsia-500 p-[2px] shadow-lg shadow-cyan-500/10 group-hover:shadow-cyan-500/25 transition-all duration-300">
-              <div className="w-full h-full bg-[#0b0f17] rounded-[10px] flex items-center justify-center">
-                <Terminal className="w-5 h-5 text-cyan-400 group-hover:scale-110 transition-transform" />
-              </div>
-            </div>
-            <div>
+            <img
+              src="/synapse-logo.jpeg"
+              alt="Synapse, a WiDS community at ACE Engineering College"
+              className="w-10 h-10 rounded-full object-cover ring-1 ring-violet-400/50 shadow-lg shadow-violet-500/20 group-hover:scale-105 transition-transform duration-300"
+            />
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-base tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
                   SYNAPSE CLUB
