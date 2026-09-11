@@ -1,8 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
-import path from 'path';
 import crypto from 'crypto';
-import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
 
 const configuredPort = Number.parseInt(process.env.PORT || '3000', 10);
 const PORT = Number.isInteger(configuredPort) && configuredPort > 0 ? configuredPort : 3000;
@@ -1258,29 +1255,32 @@ const handleSimulateLoad = (req: Request, res: Response) => {
 app.post('/api/system/simulate-load', handleSimulateLoad);
 app.get('/api/system/simulate-load', handleSimulateLoad);
 
-// --- Vite Middleware Integration ---
+// Return consistent JSON errors for API consumers and Vercel logs.
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  console.error('[server] request failed', err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: 'Internal server error.' });
+});
+
 export { app };
+export default app;
 
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req: Request, res: Response) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
+  const { createServer: createViteServer } = await import('vite');
+  const vite = await createViteServer({
+    server: { middlewareMode: true },
+    appType: 'spa',
+  });
+  app.use(vite.middlewares);
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Synapse × WiDS Full-Stack Server running on http://0.0.0.0:${PORT}`);
   });
 }
 
-if (process.env.VERCEL !== '1') {
-  startServer();
+if (!process.env.VERCEL) {
+  startServer().catch((error) => {
+    console.error('[server] failed to start', error);
+    process.exitCode = 1;
+  });
 }
