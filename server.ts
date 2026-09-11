@@ -1219,4 +1219,10 @@ async function startServer() {
   });
 }
 
-startServer();
+// On Vercel, api/index.ts imports `app` directly and handles DB readiness
+// itself — app.listen() and Vite dev middleware must never run there.
+if (process.env.VERCEL !== '1') {
+  startServer();
+}
+
+export { app, MASTER_ADMIN };
