@@ -22,6 +22,7 @@ import {
   getRegistrationById,
   insertRegistration,
   updateRegistration as dbUpdateRegistration,
+  markRegistrationCheckedIn,
   deleteRegistration as dbDeleteRegistration,
   deleteRegistrationsByEvent,
   getCodingTests,
@@ -982,8 +983,8 @@ app.post('/api/events/:id/venue-checkin', async (req: Request, res: Response) =>
   });
 });
 
-// Read-only QR validation endpoint. Venue staff can scan the pass URL with any
-// phone camera; check-in remains an explicit action in the staff portal.
+// QR entry-pass endpoint. Scanning the signed pass URL marks attendance once;
+// repeated scans are reported as already checked in.
 app.get('/api/events/:id/entry-pass/validate', async (req: Request, res: Response) => {
   const event = await getEventById(req.params.id);
   const registrationId = verifyEntryPassToken(String(req.query.token || ''), req.params.id);
@@ -994,11 +995,18 @@ app.get('/api/events/:id/entry-pass/validate', async (req: Request, res: Respons
   if (!registration || registration.eventId !== req.params.id) {
     return res.status(404).json({ valid: false, error: 'Entry pass registration was not found.' });
   }
+  const checkInTime = new Date().toISOString();
+  const checkedIn = await markRegistrationCheckedIn(registration.id, checkInTime);
+  const currentRegistration = checkedIn ?? await getRegistrationById(registration.id);
   return res.json({
     valid: true,
-    checkedIn: registration.attended,
-    registration: formatRegistration(registration),
+    attendanceMarked: Boolean(checkedIn),
+    checkedIn: true,
+    registration: formatRegistration(currentRegistration ?? registration),
     event: { id: event.id, title: event.title, venue: event.venue, dates: event.dates },
+    message: checkedIn
+      ? `Attendance confirmed for ${registration.fullName}.`
+      : `${registration.fullName} was already checked in.`,
   });
 });
 

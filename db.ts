@@ -527,6 +527,17 @@ export async function updateRegistration(
   return res.rows[0] ? rowToRegistration(res.rows[0]) : undefined;
 }
 
+export async function markRegistrationCheckedIn(id: string, checkInTime: string): Promise<StoredRegistration | undefined> {
+  const res = await query(
+    `UPDATE registrations
+     SET attended = true, check_in_time = $2
+     WHERE (id = $1 OR registration_id = $1) AND attended = false
+     RETURNING *`,
+    [id, checkInTime]
+  );
+  return res.rows[0] ? rowToRegistration(res.rows[0]) : undefined;
+}
+
 export async function deleteRegistration(id: string): Promise<StoredRegistration | undefined> {
   const res = await query(
     'DELETE FROM registrations WHERE id = $1 OR registration_id = $1 RETURNING *',
