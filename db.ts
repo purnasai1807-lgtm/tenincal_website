@@ -5,11 +5,12 @@
 // platform like Vercel Functions) cold starts.
 //
 // Connection string comes from the POSTGRES_URL environment variable — never
-// hardcode credentials here. Any standard Postgres provider works (Neon,
-// Supabase, Render Postgres, RDS, etc.).
+// hardcode credentials here. Any standard Postgres provider works (Railway,
+// Neon, Supabase, RDS, etc.). Railway's own Postgres plugin exposes its
+// connection string as DATABASE_URL, which is used as a fallback below.
 //
-// Pool sizing: this app currently runs as a long-lived Node process (Render
-// web service), so a small connection pool is safe. If this is ever deployed
+// Pool sizing: this app currently runs as a long-lived Node process (Railway
+// service), so a small connection pool is safe. If this is ever deployed
 // as a stateless serverless function again (Vercel/AWS Lambda), set
 // PG_POOL_MAX=1 via env so each invocation doesn't open a new saturating
 // connection — or switch to an HTTP-based driver such as
