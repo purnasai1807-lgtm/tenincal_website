@@ -18,7 +18,7 @@ import { EventCatalog } from './components/EventCatalog';
 import { RegistrationModal } from './components/RegistrationModal';
 import { RegistrationSuccessModal } from './components/RegistrationSuccessModal';
 import { AdminDashboard } from './components/AdminDashboard';
-import { StudentPortal } from './components/StudentPortal';
+import { MemberDashboard } from './components/MemberDashboard';
 import { LoadBalancerMonitor } from './components/LoadBalancerMonitor';
 import { AuthModal } from './components/AuthModal';
 import { AdminLoginModal } from './components/AdminLoginModal';
@@ -230,8 +230,10 @@ export default function App() {
         )}
 
         {activeTab === 'student-portal' && (
-          <StudentPortal
+          <MemberDashboard
             currentUser={currentUser}
+            events={events}
+            notifications={notifications}
             onOpenAuth={() => {
               setAuthModalMode('login');
               setAuthModalOpen(true);

@@ -168,6 +168,78 @@ export async function initDb(): Promise<void> {
   `);
 
   await query(`CREATE INDEX IF NOT EXISTS idx_registrations_event_id ON registrations(event_id);`);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS coding_tests (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      event_id TEXT REFERENCES events(id) ON DELETE SET NULL,
+      duration_minutes INTEGER NOT NULL DEFAULT 30,
+      questions JSONB NOT NULL DEFAULT '[]',
+      total_marks INTEGER NOT NULL DEFAULT 0,
+      is_published BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      created_by TEXT
+    );
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS test_submissions (
+      id TEXT PRIMARY KEY,
+      test_id TEXT NOT NULL REFERENCES coding_tests(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      answers JSONB NOT NULL DEFAULT '[]',
+      score INTEGER NOT NULL DEFAULT 0,
+      total_marks INTEGER NOT NULL DEFAULT 0,
+      submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (test_id, user_id)
+    );
+  `);
+  await query(`CREATE INDEX IF NOT EXISTS idx_test_submissions_user ON test_submissions(user_id);`);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS achievements (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      icon TEXT NOT NULL DEFAULT 'award',
+      awarded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      awarded_by TEXT
+    );
+  `);
+  await query(`CREATE INDEX IF NOT EXISTS idx_achievements_user ON achievements(user_id);`);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS certificate_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      event_id TEXT REFERENCES events(id) ON DELETE SET NULL,
+      image_data TEXT NOT NULL,
+      name_x REAL NOT NULL DEFAULT 50,
+      name_y REAL NOT NULL DEFAULT 50,
+      font_size INTEGER NOT NULL DEFAULT 42,
+      font_color TEXT NOT NULL DEFAULT '#1e293b',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      created_by TEXT
+    );
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS certificate_approvals (
+      id TEXT PRIMARY KEY,
+      template_id TEXT NOT NULL REFERENCES certificate_templates(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      event_id TEXT REFERENCES events(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'approved',
+      note TEXT,
+      approved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      approved_by TEXT,
+      UNIQUE (template_id, user_id)
+    );
+  `);
+  await query(`CREATE INDEX IF NOT EXISTS idx_certificate_approvals_user ON certificate_approvals(user_id);`);
 }
 
 // --- Idempotent master admin seed (never overwrites an existing account) ---
@@ -286,6 +358,22 @@ export async function insertUser(user: StoredUser): Promise<StoredUser> {
     ]
   );
   return user;
+}
+
+export async function updateUserProfile(
+  id: string,
+  patch: Partial<Pick<StoredUser, 'fullName' | 'year' | 'section'>>
+): Promise<StoredUser | undefined> {
+  const res = await query(
+    `UPDATE users SET
+       full_name = COALESCE($2, full_name),
+       year = COALESCE($3, year),
+       section = COALESCE($4, section)
+     WHERE id = $1
+     RETURNING *`,
+    [id, patch.fullName ?? null, patch.year ?? null, patch.section ?? null]
+  );
+  return res.rows[0] ? rowToUser(res.rows[0]) : undefined;
 }
 
 // --- Events ---
@@ -446,4 +534,352 @@ export async function deleteRegistration(id: string): Promise<StoredRegistration
 export async function deleteRegistrationsByEvent(eventId: string): Promise<number> {
   const res = await query('DELETE FROM registrations WHERE event_id = $1 RETURNING id', [eventId]);
   return res.rowCount ?? 0;
+}
+
+// --- Coding Tests, Submissions, Achievements & Certificates ---
+
+export interface TestQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctIndex: number;
+  marks: number;
+}
+
+export interface StoredCodingTest {
+  id: string;
+  title: string;
+  description: string;
+  eventId?: string;
+  durationMinutes: number;
+  questions: TestQuestion[];
+  totalMarks: number;
+  isPublished: boolean;
+  createdAt: string;
+  createdBy?: string;
+}
+
+export interface StoredTestSubmission {
+  id: string;
+  testId: string;
+  userId: string;
+  answers: number[];
+  score: number;
+  totalMarks: number;
+  submittedAt: string;
+}
+
+export interface StoredAchievement {
+  id: string;
+  userId: string;
+  title: string;
+  description: string;
+  icon: string;
+  awardedAt: string;
+  awardedBy?: string;
+}
+
+export interface StoredCertificateTemplate {
+  id: string;
+  name: string;
+  eventId?: string;
+  imageData: string;
+  nameX: number;
+  nameY: number;
+  fontSize: number;
+  fontColor: string;
+  createdAt: string;
+  createdBy?: string;
+}
+
+export interface StoredCertificateApproval {
+  id: string;
+  templateId: string;
+  userId: string;
+  eventId?: string;
+  status: 'approved' | 'pending' | 'rejected';
+  note?: string;
+  approvedAt: string;
+  approvedBy?: string;
+}
+
+function rowToCodingTest(row: any): StoredCodingTest {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    eventId: row.event_id ?? undefined,
+    durationMinutes: Number(row.duration_minutes),
+    questions: row.questions ?? [],
+    totalMarks: Number(row.total_marks),
+    isPublished: row.is_published,
+    createdAt: new Date(row.created_at).toISOString(),
+    createdBy: row.created_by ?? undefined,
+  };
+}
+
+function rowToTestSubmission(row: any): StoredTestSubmission {
+  return {
+    id: row.id,
+    testId: row.test_id,
+    userId: row.user_id,
+    answers: row.answers ?? [],
+    score: Number(row.score),
+    totalMarks: Number(row.total_marks),
+    submittedAt: new Date(row.submitted_at).toISOString(),
+  };
+}
+
+function rowToAchievement(row: any): StoredAchievement {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    title: row.title,
+    description: row.description,
+    icon: row.icon,
+    awardedAt: new Date(row.awarded_at).toISOString(),
+    awardedBy: row.awarded_by ?? undefined,
+  };
+}
+
+function rowToCertificateTemplate(row: any): StoredCertificateTemplate {
+  return {
+    id: row.id,
+    name: row.name,
+    eventId: row.event_id ?? undefined,
+    imageData: row.image_data,
+    nameX: Number(row.name_x),
+    nameY: Number(row.name_y),
+    fontSize: Number(row.font_size),
+    fontColor: row.font_color,
+    createdAt: new Date(row.created_at).toISOString(),
+    createdBy: row.created_by ?? undefined,
+  };
+}
+
+function rowToCertificateApproval(row: any): StoredCertificateApproval {
+  return {
+    id: row.id,
+    templateId: row.template_id,
+    userId: row.user_id,
+    eventId: row.event_id ?? undefined,
+    status: row.status,
+    note: row.note ?? undefined,
+    approvedAt: new Date(row.approved_at).toISOString(),
+    approvedBy: row.approved_by ?? undefined,
+  };
+}
+
+// --- Coding Tests ---
+export async function getCodingTests(publishedOnly = false): Promise<StoredCodingTest[]> {
+  const res = publishedOnly
+    ? await query('SELECT * FROM coding_tests WHERE is_published = true ORDER BY created_at DESC')
+    : await query('SELECT * FROM coding_tests ORDER BY created_at DESC');
+  return res.rows.map(rowToCodingTest);
+}
+
+export async function getCodingTestById(id: string): Promise<StoredCodingTest | undefined> {
+  const res = await query('SELECT * FROM coding_tests WHERE id = $1 LIMIT 1', [id]);
+  return res.rows[0] ? rowToCodingTest(res.rows[0]) : undefined;
+}
+
+export async function insertCodingTest(test: StoredCodingTest): Promise<StoredCodingTest> {
+  await query(
+    `INSERT INTO coding_tests (id, title, description, event_id, duration_minutes, questions, total_marks, is_published, created_at, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [
+      test.id,
+      test.title,
+      test.description,
+      test.eventId ?? null,
+      test.durationMinutes,
+      JSON.stringify(test.questions ?? []),
+      test.totalMarks,
+      test.isPublished,
+      test.createdAt,
+      test.createdBy ?? null,
+    ]
+  );
+  return test;
+}
+
+export async function updateCodingTest(id: string, updated: StoredCodingTest): Promise<StoredCodingTest | undefined> {
+  const res = await query(
+    `UPDATE coding_tests SET
+       title = $2, description = $3, event_id = $4, duration_minutes = $5,
+       questions = $6, total_marks = $7, is_published = $8
+     WHERE id = $1
+     RETURNING *`,
+    [
+      id,
+      updated.title,
+      updated.description,
+      updated.eventId ?? null,
+      updated.durationMinutes,
+      JSON.stringify(updated.questions ?? []),
+      updated.totalMarks,
+      updated.isPublished,
+    ]
+  );
+  return res.rows[0] ? rowToCodingTest(res.rows[0]) : undefined;
+}
+
+export async function deleteCodingTest(id: string): Promise<StoredCodingTest | undefined> {
+  const res = await query('DELETE FROM coding_tests WHERE id = $1 RETURNING *', [id]);
+  return res.rows[0] ? rowToCodingTest(res.rows[0]) : undefined;
+}
+
+// --- Test Submissions ---
+export async function getSubmissionsByTest(testId: string): Promise<StoredTestSubmission[]> {
+  const res = await query('SELECT * FROM test_submissions WHERE test_id = $1 ORDER BY score DESC, submitted_at ASC', [testId]);
+  return res.rows.map(rowToTestSubmission);
+}
+
+export async function getSubmissionsByUser(userId: string): Promise<StoredTestSubmission[]> {
+  const res = await query('SELECT * FROM test_submissions WHERE user_id = $1 ORDER BY submitted_at DESC', [userId]);
+  return res.rows.map(rowToTestSubmission);
+}
+
+export async function getSubmission(testId: string, userId: string): Promise<StoredTestSubmission | undefined> {
+  const res = await query('SELECT * FROM test_submissions WHERE test_id = $1 AND user_id = $2 LIMIT 1', [testId, userId]);
+  return res.rows[0] ? rowToTestSubmission(res.rows[0]) : undefined;
+}
+
+export async function insertTestSubmission(sub: StoredTestSubmission): Promise<StoredTestSubmission> {
+  await query(
+    `INSERT INTO test_submissions (id, test_id, user_id, answers, score, total_marks, submitted_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [sub.id, sub.testId, sub.userId, JSON.stringify(sub.answers ?? []), sub.score, sub.totalMarks, sub.submittedAt]
+  );
+  return sub;
+}
+
+// --- Leaderboard: aggregate best score per user across all tests ---
+export interface LeaderboardRow {
+  userId: string;
+  fullName: string;
+  rollNumber?: string;
+  totalScore: number;
+  testsTaken: number;
+  rank: number;
+}
+
+export async function getLeaderboard(limit = 50): Promise<LeaderboardRow[]> {
+  const res = await query(
+    `SELECT
+       u.id AS user_id,
+       u.full_name,
+       u.roll_number,
+       COALESCE(SUM(s.score), 0) AS total_score,
+       COUNT(s.id) AS tests_taken,
+       RANK() OVER (ORDER BY COALESCE(SUM(s.score), 0) DESC) AS rank
+     FROM users u
+     LEFT JOIN test_submissions s ON s.user_id = u.id
+     WHERE u.role = 'user'
+     GROUP BY u.id, u.full_name, u.roll_number
+     HAVING COUNT(s.id) > 0
+     ORDER BY total_score DESC
+     LIMIT $1`,
+    [limit]
+  );
+  return res.rows.map((row: any) => ({
+    userId: row.user_id,
+    fullName: row.full_name,
+    rollNumber: row.roll_number ?? undefined,
+    totalScore: Number(row.total_score),
+    testsTaken: Number(row.tests_taken),
+    rank: Number(row.rank),
+  }));
+}
+
+export async function getLeaderboardRankForUser(userId: string): Promise<LeaderboardRow | undefined> {
+  const all = await getLeaderboard(100000);
+  return all.find((r) => r.userId === userId);
+}
+
+// --- Achievements ---
+export async function getAchievementsByUser(userId: string): Promise<StoredAchievement[]> {
+  const res = await query('SELECT * FROM achievements WHERE user_id = $1 ORDER BY awarded_at DESC', [userId]);
+  return res.rows.map(rowToAchievement);
+}
+
+export async function insertAchievement(a: StoredAchievement): Promise<StoredAchievement> {
+  await query(
+    `INSERT INTO achievements (id, user_id, title, description, icon, awarded_at, awarded_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [a.id, a.userId, a.title, a.description, a.icon, a.awardedAt, a.awardedBy ?? null]
+  );
+  return a;
+}
+
+export async function deleteAchievement(id: string): Promise<boolean> {
+  const res = await query('DELETE FROM achievements WHERE id = $1 RETURNING id', [id]);
+  return (res.rowCount ?? 0) > 0;
+}
+
+// --- Certificate Templates ---
+export async function getCertificateTemplates(): Promise<StoredCertificateTemplate[]> {
+  const res = await query('SELECT * FROM certificate_templates ORDER BY created_at DESC');
+  return res.rows.map(rowToCertificateTemplate);
+}
+
+export async function getCertificateTemplateById(id: string): Promise<StoredCertificateTemplate | undefined> {
+  const res = await query('SELECT * FROM certificate_templates WHERE id = $1 LIMIT 1', [id]);
+  return res.rows[0] ? rowToCertificateTemplate(res.rows[0]) : undefined;
+}
+
+export async function insertCertificateTemplate(t: StoredCertificateTemplate): Promise<StoredCertificateTemplate> {
+  await query(
+    `INSERT INTO certificate_templates (id, name, event_id, image_data, name_x, name_y, font_size, font_color, created_at, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [
+      t.id,
+      t.name,
+      t.eventId ?? null,
+      t.imageData,
+      t.nameX,
+      t.nameY,
+      t.fontSize,
+      t.fontColor,
+      t.createdAt,
+      t.createdBy ?? null,
+    ]
+  );
+  return t;
+}
+
+export async function deleteCertificateTemplate(id: string): Promise<boolean> {
+  const res = await query('DELETE FROM certificate_templates WHERE id = $1 RETURNING id', [id]);
+  return (res.rowCount ?? 0) > 0;
+}
+
+// --- Certificate Approvals ---
+export async function getCertificateApprovalsByUser(userId: string): Promise<StoredCertificateApproval[]> {
+  const res = await query(
+    `SELECT * FROM certificate_approvals WHERE user_id = $1 AND status = 'approved' ORDER BY approved_at DESC`,
+    [userId]
+  );
+  return res.rows.map(rowToCertificateApproval);
+}
+
+export async function getCertificateApprovals(): Promise<StoredCertificateApproval[]> {
+  const res = await query('SELECT * FROM certificate_approvals ORDER BY approved_at DESC');
+  return res.rows.map(rowToCertificateApproval);
+}
+
+export async function insertCertificateApproval(a: StoredCertificateApproval): Promise<StoredCertificateApproval> {
+  const res = await query(
+    `INSERT INTO certificate_approvals (id, template_id, user_id, event_id, status, note, approved_at, approved_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+     ON CONFLICT (template_id, user_id) DO UPDATE SET
+       status = EXCLUDED.status, note = EXCLUDED.note, approved_at = EXCLUDED.approved_at, approved_by = EXCLUDED.approved_by
+     RETURNING *`,
+    [a.id, a.templateId, a.userId, a.eventId ?? null, a.status, a.note ?? null, a.approvedAt, a.approvedBy ?? null]
+  );
+  return rowToCertificateApproval(res.rows[0]);
+}
+
+export async function deleteCertificateApproval(id: string): Promise<boolean> {
+  const res = await query('DELETE FROM certificate_approvals WHERE id = $1 RETURNING id', [id]);
+  return (res.rowCount ?? 0) > 0;
 }

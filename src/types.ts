@@ -165,3 +165,120 @@ export interface VenueCheckInResult {
     dates: string;
   };
 }
+
+// --- Member Dashboard: Coding Tests, Leaderboard, Achievements, Certificates ---
+
+export interface TestQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctIndex: number;
+  marks: number;
+}
+
+export interface CodingTestSummary {
+  id: string;
+  title: string;
+  description: string;
+  eventId?: string;
+  durationMinutes: number;
+  totalMarks: number;
+  questionCount: number;
+  hasAttempted: boolean;
+}
+
+export interface CodingTestDetail {
+  id: string;
+  title: string;
+  description: string;
+  durationMinutes: number;
+  totalMarks: number;
+  questions: Omit<TestQuestion, 'correctIndex'>[];
+}
+
+export interface AdminCodingTest {
+  id: string;
+  title: string;
+  description: string;
+  eventId?: string;
+  durationMinutes: number;
+  questions: TestQuestion[];
+  totalMarks: number;
+  isPublished: boolean;
+  createdAt: string;
+  createdBy?: string;
+}
+
+export interface TestScore {
+  testId: string;
+  testTitle: string;
+  score: number;
+  totalMarks: number;
+  submittedAt: string;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  fullName: string;
+  rollNumber?: string;
+  totalScore: number;
+  testsTaken: number;
+}
+
+export interface LeaderboardResponse {
+  leaderboard: LeaderboardEntry[];
+  myRank: { rank: number; totalScore: number; testsTaken: number } | null;
+}
+
+export interface Achievement {
+  id: string;
+  userId: string;
+  title: string;
+  description: string;
+  icon: string;
+  awardedAt: string;
+  awardedBy?: string;
+}
+
+export interface CertificateTemplateInfo {
+  id: string;
+  name: string;
+  imageData: string;
+  nameX: number;
+  nameY: number;
+  fontSize: number;
+  fontColor: string;
+}
+
+export interface MyCertificate {
+  id: string;
+  approvedAt: string;
+  note?: string;
+  template: CertificateTemplateInfo | null;
+}
+
+export interface AdminCertificateTemplate {
+  id: string;
+  name: string;
+  eventId?: string;
+  imageData: string;
+  nameX: number;
+  nameY: number;
+  fontSize: number;
+  fontColor: string;
+  createdAt: string;
+  createdBy?: string;
+}
+
+export interface AdminCertificateApproval {
+  id: string;
+  templateId: string;
+  userId: string;
+  eventId?: string;
+  status: 'approved' | 'pending' | 'rejected';
+  note?: string;
+  approvedAt: string;
+  approvedBy?: string;
+  fullName?: string;
+  rollNumber?: string;
+}

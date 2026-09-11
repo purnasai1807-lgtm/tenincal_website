@@ -10,6 +10,7 @@ import {
   getUserByEmail,
   getUserByUsernameOrEmail,
   insertUser,
+  updateUserProfile,
   getEvents,
   getEventById,
   insertEvent,
@@ -23,9 +24,37 @@ import {
   updateRegistration as dbUpdateRegistration,
   deleteRegistration as dbDeleteRegistration,
   deleteRegistrationsByEvent,
+  getCodingTests,
+  getCodingTestById,
+  insertCodingTest,
+  updateCodingTest as dbUpdateCodingTest,
+  deleteCodingTest as dbDeleteCodingTest,
+  getSubmissionsByTest,
+  getSubmissionsByUser,
+  getSubmission,
+  insertTestSubmission,
+  getLeaderboard,
+  getLeaderboardRankForUser,
+  getAchievementsByUser,
+  insertAchievement,
+  deleteAchievement as dbDeleteAchievement,
+  getCertificateTemplates,
+  getCertificateTemplateById,
+  insertCertificateTemplate,
+  deleteCertificateTemplate as dbDeleteCertificateTemplate,
+  getCertificateApprovalsByUser,
+  getCertificateApprovals,
+  insertCertificateApproval,
+  deleteCertificateApproval as dbDeleteCertificateApproval,
   type StoredUser,
   type StoredEvent,
   type StoredRegistration,
+  type StoredCodingTest,
+  type TestQuestion,
+  type StoredTestSubmission,
+  type StoredAchievement,
+  type StoredCertificateTemplate,
+  type StoredCertificateApproval,
 } from './db.js';
 const configuredPort = Number.parseInt(process.env.PORT || '3000', 10);
 const PORT = Number.isInteger(configuredPort) && configuredPort > 0 ? configuredPort : 3000;
@@ -1186,6 +1215,412 @@ const handleSimulateLoad = (req: Request, res: Response) => {
 
 app.post('/api/system/simulate-load', handleSimulateLoad);
 app.get('/api/system/simulate-load', handleSimulateLoad);
+
+// --- Coding Tests (Member Dashboard) ---
+
+// Public/member: List published coding tests, flagged with the caller's attempt status
+app.get('/api/tests', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const tests = await getCodingTests(true);
+  const mySubmissions = await getSubmissionsByUser(req.user!.id);
+  const submittedTestIds = new Set(mySubmissions.map((s) => s.testId));
+
+  res.json(
+    tests.map((t) => ({
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      eventId: t.eventId,
+      durationMinutes: t.durationMinutes,
+      totalMarks: t.totalMarks,
+      questionCount: t.questions.length,
+      hasAttempted: submittedTestIds.has(t.id),
+    }))
+  );
+});
+
+// Member: Fetch test questions to attempt (correct answers stripped)
+app.get('/api/tests/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const test = await getCodingTestById(req.params.id);
+  if (!test || !test.isPublished) {
+    return res.status(404).json({ error: 'Coding test not found.' });
+  }
+  const existing = await getSubmission(test.id, req.user!.id);
+  if (existing) {
+    return res.status(409).json({ error: 'You have already submitted this test.', score: existing.score, totalMarks: existing.totalMarks });
+  }
+  res.json({
+    id: test.id,
+    title: test.title,
+    description: test.description,
+    durationMinutes: test.durationMinutes,
+    totalMarks: test.totalMarks,
+    questions: test.questions.map((q) => ({ id: q.id, question: q.question, options: q.options, marks: q.marks })),
+  });
+});
+
+// Member: Submit answers for a test (one attempt per user)
+app.post('/api/tests/:id/submit', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const test = await getCodingTestById(req.params.id);
+  if (!test || !test.isPublished) {
+    return res.status(404).json({ error: 'Coding test not found.' });
+  }
+  const existing = await getSubmission(test.id, req.user!.id);
+  if (existing) {
+    return res.status(409).json({ error: 'You have already submitted this test.' });
+  }
+
+  const { answers } = req.body;
+  if (!Array.isArray(answers)) {
+    return res.status(400).json({ error: 'Answers must be an array of selected option indexes.' });
+  }
+
+  let score = 0;
+  test.questions.forEach((q, i) => {
+    if (answers[i] === q.correctIndex) score += q.marks;
+  });
+
+  const submission: StoredTestSubmission = {
+    id: 'sub-' + crypto.randomUUID().slice(0, 8),
+    testId: test.id,
+    userId: req.user!.id,
+    answers,
+    score,
+    totalMarks: test.totalMarks,
+    submittedAt: new Date().toISOString(),
+  };
+  await insertTestSubmission(submission);
+
+  res.status(201).json({ success: true, score, totalMarks: test.totalMarks, submission });
+});
+
+// Member: My test scores
+app.get('/api/tests/scores/mine', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const submissions = await getSubmissionsByUser(req.user!.id);
+  const tests = await getCodingTests();
+  const testsById = new Map(tests.map((t) => [t.id, t]));
+  res.json(
+    submissions.map((s) => ({
+      testId: s.testId,
+      testTitle: testsById.get(s.testId)?.title || 'Unknown Test',
+      score: s.score,
+      totalMarks: s.totalMarks,
+      submittedAt: s.submittedAt,
+    }))
+  );
+});
+
+// Member: Leaderboard (top scorers + my own rank)
+app.get('/api/leaderboard', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const top = await getLeaderboard(50);
+  const myRank = await getLeaderboardRankForUser(req.user!.id);
+  res.json({
+    leaderboard: top.map((r) => ({
+      rank: r.rank,
+      fullName: r.fullName,
+      rollNumber: r.rollNumber,
+      totalScore: r.totalScore,
+      testsTaken: r.testsTaken,
+    })),
+    myRank: myRank
+      ? { rank: myRank.rank, totalScore: myRank.totalScore, testsTaken: myRank.testsTaken }
+      : null,
+  });
+});
+
+// Admin: Create a coding test
+app.post('/api/admin/tests', requireAdmin, async (req: AuthRequest, res: Response) => {
+  const { title, description = '', eventId, durationMinutes = 30, questions = [], isPublished = false } = req.body;
+  if (!title || typeof title !== 'string' || title.trim().length < 3) {
+    return res.status(400).json({ error: 'Test title is required (at least 3 characters).' });
+  }
+  if (!Array.isArray(questions) || questions.length === 0) {
+    return res.status(400).json({ error: 'At least one question is required.' });
+  }
+
+  const normalizedQuestions: TestQuestion[] = questions.map((q: any, i: number) => ({
+    id: q.id || `q-${i + 1}`,
+    question: String(q.question || '').trim(),
+    options: Array.isArray(q.options) ? q.options.map((o: any) => String(o)) : [],
+    correctIndex: Number(q.correctIndex) || 0,
+    marks: Number(q.marks) || 1,
+  }));
+  const totalMarks = normalizedQuestions.reduce((acc, q) => acc + q.marks, 0);
+
+  const newTest: StoredCodingTest = {
+    id: 'test-' + crypto.randomUUID().slice(0, 8),
+    title: title.trim(),
+    description: description.trim(),
+    eventId: eventId || undefined,
+    durationMinutes: Math.max(5, Number(durationMinutes) || 30),
+    questions: normalizedQuestions,
+    totalMarks,
+    isPublished: Boolean(isPublished),
+    createdAt: new Date().toISOString(),
+    createdBy: req.user?.username,
+  };
+  await insertCodingTest(newTest);
+  res.status(201).json({ success: true, test: newTest });
+});
+
+// Admin: List all tests (published + drafts)
+app.get('/api/admin/tests', requireAdmin, async (req: Request, res: Response) => {
+  const tests = await getCodingTests(false);
+  res.json(tests);
+});
+
+// Admin: Update a test (e.g. publish/unpublish, edit questions)
+app.put('/api/admin/tests/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
+  const existing = await getCodingTestById(req.params.id);
+  if (!existing) {
+    return res.status(404).json({ error: 'Test not found.' });
+  }
+  const { title, description, eventId, durationMinutes, questions, isPublished } = req.body;
+  const normalizedQuestions: TestQuestion[] | undefined = Array.isArray(questions)
+    ? questions.map((q: any, i: number) => ({
+        id: q.id || `q-${i + 1}`,
+        question: String(q.question || '').trim(),
+        options: Array.isArray(q.options) ? q.options.map((o: any) => String(o)) : [],
+        correctIndex: Number(q.correctIndex) || 0,
+        marks: Number(q.marks) || 1,
+      }))
+    : undefined;
+
+  const updated: StoredCodingTest = {
+    ...existing,
+    title: title !== undefined ? title.trim() : existing.title,
+    description: description !== undefined ? description.trim() : existing.description,
+    eventId: eventId !== undefined ? eventId || undefined : existing.eventId,
+    durationMinutes: durationMinutes !== undefined ? Math.max(5, Number(durationMinutes) || 30) : existing.durationMinutes,
+    questions: normalizedQuestions ?? existing.questions,
+    totalMarks: normalizedQuestions ? normalizedQuestions.reduce((acc, q) => acc + q.marks, 0) : existing.totalMarks,
+    isPublished: isPublished !== undefined ? Boolean(isPublished) : existing.isPublished,
+  };
+  await dbUpdateCodingTest(req.params.id, updated);
+  res.json({ success: true, test: updated });
+});
+
+// Admin: Delete a test
+app.delete('/api/admin/tests/:id', requireAdmin, async (req: Request, res: Response) => {
+  const removed = await dbDeleteCodingTest(req.params.id);
+  if (!removed) {
+    return res.status(404).json({ error: 'Test not found.' });
+  }
+  res.json({ success: true, message: `Test "${removed.title}" deleted.` });
+});
+
+// Admin: View all submissions for a test (for grading/insight)
+app.get('/api/admin/tests/:id/submissions', requireAdmin, async (req: Request, res: Response) => {
+  const submissions = await getSubmissionsByTest(req.params.id);
+  const users = await getUsers();
+  const usersById = new Map(users.map((u) => [u.id, u]));
+  res.json(
+    submissions.map((s) => ({
+      ...s,
+      fullName: usersById.get(s.userId)?.fullName,
+      rollNumber: usersById.get(s.userId)?.rollNumber,
+    }))
+  );
+});
+
+// --- Achievements ---
+
+// Member: My achievements
+app.get('/api/achievements/mine', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const achievements = await getAchievementsByUser(req.user!.id);
+  res.json(achievements);
+});
+
+// Admin: Award an achievement to a member (by roll number, username, or email)
+app.post('/api/admin/achievements', requireAdmin, async (req: AuthRequest, res: Response) => {
+  const { identifier, title, description = '', icon = 'award' } = req.body;
+  if (!identifier || !title) {
+    return res.status(400).json({ error: 'Member identifier and achievement title are required.' });
+  }
+  const user =
+    (await getUserByUsernameOrEmail(String(identifier).trim())) ||
+    (await getUsers()).find((u) => u.rollNumber?.toLowerCase() === String(identifier).trim().toLowerCase());
+  if (!user) {
+    return res.status(404).json({ error: `No member found matching "${identifier}".` });
+  }
+
+  const achievement: StoredAchievement = {
+    id: 'ach-' + crypto.randomUUID().slice(0, 8),
+    userId: user.id,
+    title: String(title).trim(),
+    description: String(description).trim(),
+    icon: String(icon),
+    awardedAt: new Date().toISOString(),
+    awardedBy: req.user?.username,
+  };
+  await insertAchievement(achievement);
+  res.status(201).json({ success: true, achievement, awardedTo: { fullName: user.fullName, rollNumber: user.rollNumber } });
+});
+
+// Admin: Revoke an achievement
+app.delete('/api/admin/achievements/:id', requireAdmin, async (req: Request, res: Response) => {
+  const removed = await dbDeleteAchievement(req.params.id);
+  if (!removed) {
+    return res.status(404).json({ error: 'Achievement not found.' });
+  }
+  res.json({ success: true, message: 'Achievement revoked.' });
+});
+
+// --- Certificates (Templates posted by admin, approvals per member, auto-download) ---
+
+// Admin: Upload a certificate template (base64 image + name placement coordinates)
+app.post('/api/admin/certificate-templates', requireAdmin, async (req: AuthRequest, res: Response) => {
+  const { name, eventId, imageData, nameX = 50, nameY = 50, fontSize = 42, fontColor = '#1e293b' } = req.body;
+  if (!name || !imageData || typeof imageData !== 'string' || !imageData.startsWith('data:image')) {
+    return res.status(400).json({ error: 'Template name and a valid base64 image (data:image/...) are required.' });
+  }
+
+  const template: StoredCertificateTemplate = {
+    id: 'cert-tpl-' + crypto.randomUUID().slice(0, 8),
+    name: String(name).trim(),
+    eventId: eventId || undefined,
+    imageData,
+    nameX: Number(nameX),
+    nameY: Number(nameY),
+    fontSize: Number(fontSize),
+    fontColor: String(fontColor),
+    createdAt: new Date().toISOString(),
+    createdBy: req.user?.username,
+  };
+  await insertCertificateTemplate(template);
+  res.status(201).json({ success: true, template });
+});
+
+// Admin: List certificate templates
+app.get('/api/admin/certificate-templates', requireAdmin, async (req: Request, res: Response) => {
+  res.json(await getCertificateTemplates());
+});
+
+// Public (any authenticated user): needed so members can render their approved certificate image
+app.get('/api/certificate-templates/:id', authenticateToken, async (req: Request, res: Response) => {
+  const template = await getCertificateTemplateById(req.params.id);
+  if (!template) {
+    return res.status(404).json({ error: 'Certificate template not found.' });
+  }
+  res.json(template);
+});
+
+// Admin: Delete a certificate template
+app.delete('/api/admin/certificate-templates/:id', requireAdmin, async (req: Request, res: Response) => {
+  const removed = await dbDeleteCertificateTemplate(req.params.id);
+  if (!removed) {
+    return res.status(404).json({ error: 'Template not found.' });
+  }
+  res.json({ success: true, message: 'Certificate template deleted.' });
+});
+
+// Admin: Approve a member for a certificate — this is what unlocks automatic download
+app.post('/api/admin/certificates/approve', requireAdmin, async (req: AuthRequest, res: Response) => {
+  const { identifier, templateId, eventId, note } = req.body;
+  if (!identifier || !templateId) {
+    return res.status(400).json({ error: 'Member identifier and templateId are required.' });
+  }
+  const template = await getCertificateTemplateById(templateId);
+  if (!template) {
+    return res.status(404).json({ error: 'Certificate template not found.' });
+  }
+  const user =
+    (await getUserByUsernameOrEmail(String(identifier).trim())) ||
+    (await getUsers()).find((u) => u.rollNumber?.toLowerCase() === String(identifier).trim().toLowerCase());
+  if (!user) {
+    return res.status(404).json({ error: `No member found matching "${identifier}".` });
+  }
+
+  const approval: StoredCertificateApproval = {
+    id: 'cert-app-' + crypto.randomUUID().slice(0, 8),
+    templateId,
+    userId: user.id,
+    eventId: eventId || template.eventId,
+    status: 'approved',
+    note: note ? String(note) : undefined,
+    approvedAt: new Date().toISOString(),
+    approvedBy: req.user?.username,
+  };
+  const saved = await insertCertificateApproval(approval);
+  res.status(201).json({ success: true, approval: saved, approvedFor: { fullName: user.fullName, rollNumber: user.rollNumber } });
+});
+
+// Admin: List all certificate approvals
+app.get('/api/admin/certificates', requireAdmin, async (req: Request, res: Response) => {
+  const approvals = await getCertificateApprovals();
+  const users = await getUsers();
+  const usersById = new Map(users.map((u) => [u.id, u]));
+  res.json(
+    approvals.map((a) => ({
+      ...a,
+      fullName: usersById.get(a.userId)?.fullName,
+      rollNumber: usersById.get(a.userId)?.rollNumber,
+    }))
+  );
+});
+
+// Admin: Revoke a certificate approval
+app.delete('/api/admin/certificates/:id', requireAdmin, async (req: Request, res: Response) => {
+  const removed = await dbDeleteCertificateApproval(req.params.id);
+  if (!removed) {
+    return res.status(404).json({ error: 'Certificate approval not found.' });
+  }
+  res.json({ success: true, message: 'Certificate approval revoked.' });
+});
+
+// Member: My approved certificates — ready for automatic client-side rendering/download
+app.get('/api/certificates/mine', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const approvals = await getCertificateApprovalsByUser(req.user!.id);
+  const templates = await getCertificateTemplates();
+  const templatesById = new Map(templates.map((t) => [t.id, t]));
+  res.json(
+    approvals.map((a) => {
+      const t = templatesById.get(a.templateId);
+      return {
+        id: a.id,
+        approvedAt: a.approvedAt,
+        note: a.note,
+        template: t
+          ? {
+              id: t.id,
+              name: t.name,
+              imageData: t.imageData,
+              nameX: t.nameX,
+              nameY: t.nameY,
+              fontSize: t.fontSize,
+              fontColor: t.fontColor,
+            }
+          : null,
+      };
+    })
+  );
+});
+
+// Member: Update editable profile fields
+app.patch('/api/profile', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const { fullName, year, section } = req.body;
+  const updated = await updateUserProfile(req.user!.id, {
+    fullName: fullName !== undefined ? String(fullName).trim() : undefined,
+    year: year !== undefined ? String(year) : undefined,
+    section: section !== undefined ? String(section) : undefined,
+  });
+  if (!updated) {
+    return res.status(404).json({ error: 'Account not found.' });
+  }
+  res.json({
+    success: true,
+    user: {
+      id: updated.id,
+      username: updated.username,
+      email: updated.email,
+      role: updated.role,
+      fullName: updated.fullName,
+      rollNumber: updated.rollNumber,
+      year: updated.year,
+      section: updated.section,
+      createdAt: updated.createdAt,
+    },
+  });
+});
 
 // --- Error-Handling Middleware (must be registered after all routes) ---
 // Ensures any uncaught error returns a clean JSON 500 instead of crashing.

@@ -1,4 +1,4 @@
-import { EventItem, StudentRegistration, User, AnalyticsData, LoadBalancerMetrics, NotificationItem, EventQrInfo, VenueCheckInResult } from '../types';
+import { EventItem, StudentRegistration, User, AnalyticsData, LoadBalancerMetrics, NotificationItem, EventQrInfo, VenueCheckInResult, CodingTestSummary, CodingTestDetail, AdminCodingTest, TestScore, LeaderboardResponse, Achievement, MyCertificate, AdminCertificateTemplate, AdminCertificateApproval } from '../types';
 
 const TOKEN_KEY = 'synapse_jwt_token';
 const USER_KEY = 'synapse_user_data';
@@ -274,5 +274,120 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ identifier, token }),
     });
+  },
+
+  // Member Dashboard: Coding Tests
+  async getMyTests(): Promise<CodingTestSummary[]> {
+    return apiFetch<CodingTestSummary[]>('/api/tests');
+  },
+
+  async getTestToAttempt(testId: string): Promise<CodingTestDetail> {
+    return apiFetch<CodingTestDetail>(`/api/tests/${testId}`);
+  },
+
+  async submitTest(testId: string, answers: number[]): Promise<{ success: boolean; score: number; totalMarks: number }> {
+    return apiFetch(`/api/tests/${testId}/submit`, {
+      method: 'POST',
+      body: JSON.stringify({ answers }),
+    });
+  },
+
+  async getMyTestScores(): Promise<TestScore[]> {
+    return apiFetch<TestScore[]>('/api/tests/scores/mine');
+  },
+
+  async getLeaderboard(): Promise<LeaderboardResponse> {
+    return apiFetch<LeaderboardResponse>('/api/leaderboard');
+  },
+
+  async getMyAchievements(): Promise<Achievement[]> {
+    return apiFetch<Achievement[]>('/api/achievements/mine');
+  },
+
+  async getMyCertificates(): Promise<MyCertificate[]> {
+    return apiFetch<MyCertificate[]>('/api/certificates/mine');
+  },
+
+  async updateProfile(payload: { fullName?: string; year?: string; section?: string }): Promise<{ success: boolean; user: User }> {
+    const res = await apiFetch<{ success: boolean; user: User }>('/api/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    authStorage.setUser(res.user);
+    return res;
+  },
+
+  // Admin: Coding Tests
+  async getAdminTests(): Promise<AdminCodingTest[]> {
+    return apiFetch<AdminCodingTest[]>('/api/admin/tests');
+  },
+
+  async createTest(payload: Partial<AdminCodingTest>): Promise<{ success: boolean; test: AdminCodingTest }> {
+    return apiFetch('/api/admin/tests', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updateTest(id: string, payload: Partial<AdminCodingTest>): Promise<{ success: boolean; test: AdminCodingTest }> {
+    return apiFetch(`/api/admin/tests/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteTest(id: string): Promise<{ success: boolean; message: string }> {
+    return apiFetch(`/api/admin/tests/${id}`, { method: 'DELETE' });
+  },
+
+  // Admin: Achievements
+  async awardAchievement(payload: { identifier: string; title: string; description?: string; icon?: string }) {
+    return apiFetch('/api/admin/achievements', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async revokeAchievement(id: string): Promise<{ success: boolean; message: string }> {
+    return apiFetch(`/api/admin/achievements/${id}`, { method: 'DELETE' });
+  },
+
+  // Admin: Certificate Templates & Approvals
+  async getAdminCertificateTemplates(): Promise<AdminCertificateTemplate[]> {
+    return apiFetch<AdminCertificateTemplate[]>('/api/admin/certificate-templates');
+  },
+
+  async createCertificateTemplate(payload: {
+    name: string;
+    eventId?: string;
+    imageData: string;
+    nameX?: number;
+    nameY?: number;
+    fontSize?: number;
+    fontColor?: string;
+  }): Promise<{ success: boolean; template: AdminCertificateTemplate }> {
+    return apiFetch('/api/admin/certificate-templates', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteCertificateTemplate(id: string): Promise<{ success: boolean; message: string }> {
+    return apiFetch(`/api/admin/certificate-templates/${id}`, { method: 'DELETE' });
+  },
+
+  async approveCertificate(payload: { identifier: string; templateId: string; eventId?: string; note?: string }) {
+    return apiFetch('/api/admin/certificates/approve', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getAdminCertificateApprovals(): Promise<AdminCertificateApproval[]> {
+    return apiFetch<AdminCertificateApproval[]>('/api/admin/certificates');
+  },
+
+  async revokeCertificateApproval(id: string): Promise<{ success: boolean; message: string }> {
+    return apiFetch(`/api/admin/certificates/${id}`, { method: 'DELETE' });
   },
 };

@@ -34,13 +34,15 @@ import {
   Ticket,
   PartyPopper,
   Flame,
-  QrCode
+  QrCode,
+  Award
 } from 'lucide-react';
 import { StudentRegistration, AnalyticsData, User, EventItem } from '../types';
 import { api } from '../services/api';
 import { EventFormModal } from './EventFormModal';
 import { RegistrationGrowthChart } from './RegistrationGrowthChart';
 import { EventAttendanceQR } from './EventAttendanceQR';
+import { AdminMemberTools } from './AdminMemberTools';
 
 interface AdminDashboardProps {
   currentUser: User | null;
@@ -55,7 +57,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onOpenPrintRoster,
   onTriggerCelebration,
 }) => {
-  const [activeAdminTab, setActiveAdminTab] = useState<'events' | 'students' | 'analytics' | 'attendance-qr'>('events');
+  const [activeAdminTab, setActiveAdminTab] = useState<'events' | 'students' | 'analytics' | 'attendance-qr' | 'member-tools'>('events');
   const [selectedEventForQr, setSelectedEventForQr] = useState<string | undefined>(undefined);
   const [students, setStudents] = useState<StudentRegistration[]>([]);
   const [eventsList, setEventsList] = useState<EventItem[]>([]);
@@ -389,6 +391,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
             Live
           </span>
+        </button>
+
+        <button
+          onClick={() => setActiveAdminTab('member-tools')}
+          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all ${
+            activeAdminTab === 'member-tools'
+              ? 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow-md shadow-cyan-500/20'
+              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <Award className="w-4 h-4 text-amber-400" />
+          <span>Tests, Achievements & Certificates</span>
         </button>
       </div>
 
@@ -937,6 +951,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           onRefreshData={fetchData}
         />
       )}
+
+      {/* TAB 5: CODING TESTS, ACHIEVEMENTS & CERTIFICATES */}
+      {activeAdminTab === 'member-tools' && <AdminMemberTools events={eventsList} />}
 
       {/* MODAL: Post / Edit Technical Event */}
       <EventFormModal
