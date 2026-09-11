@@ -276,10 +276,10 @@ export const api = {
     });
   },
 
-  async venueCheckOut(eventId: string, token: string): Promise<{ checkedOut: boolean; checkOutTime: string; message: string }> {
+  async venueCheckOut(eventId: string, identifier: string, token?: string): Promise<{ checkedOut: boolean; checkOutTime: string; message: string }> {
     return apiFetch(`/api/events/${eventId}/entry-pass/checkout`, {
       method: 'POST',
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ identifier, token }),
     });
   },
 

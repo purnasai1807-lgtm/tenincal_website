@@ -1035,13 +1035,22 @@ app.get('/api/events/:id/entry-pass/validate', async (req: Request, res: Respons
 // not erase the attendee's confirmed attendance.
 app.post('/api/events/:id/entry-pass/checkout', async (req: Request, res: Response) => {
   const event = await getEventById(req.params.id);
-  const registrationId = verifyEntryPassToken(String(req.body?.token || ''), req.params.id);
-  if (!event || !registrationId) {
+  const tokenRegistrationId = verifyEntryPassToken(String(req.body?.token || ''), req.params.id);
+  if (!event) {
     return res.status(400).json({ valid: false, error: 'Invalid or expired entry pass.' });
   }
-  const registration = await getRegistrationById(registrationId);
+  let registration = tokenRegistrationId ? await getRegistrationById(tokenRegistrationId) : undefined;
+  if (!registration && typeof req.body?.identifier === 'string' && req.body.identifier.trim()) {
+    const query = req.body.identifier.trim().toLowerCase();
+    const matches = await getRegistrationsByEvent(req.params.id);
+    registration = matches.find((candidate) =>
+      candidate.registrationId.toLowerCase() === query ||
+      candidate.id.toLowerCase() === query ||
+      candidate.rollNumber.toLowerCase() === query
+    );
+  }
   if (!registration || registration.eventId !== req.params.id) {
-    return res.status(404).json({ valid: false, error: 'Entry pass registration was not found.' });
+    return res.status(404).json({ valid: false, error: 'Entry pass registration was not found. Scan a valid pass or enter a registration ID.' });
   }
   const checkOutTime = new Date().toISOString();
   await recordQrScan(registration.id, event.id, checkOutTime, 'check_out');

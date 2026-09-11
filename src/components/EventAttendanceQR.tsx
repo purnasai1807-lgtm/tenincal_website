@@ -56,6 +56,8 @@ export const EventAttendanceQR: React.FC<EventAttendanceQRProps> = ({
   const [manualInput, setManualInput] = useState('');
   const [manualLoading, setManualLoading] = useState(false);
   const [manualStatus, setManualStatus] = useState<{ success?: boolean; message?: string } | null>(null);
+  const [manualAction, setManualAction] = useState<'check-in' | 'check-out'>('check-in');
+  const [manualActionTime, setManualActionTime] = useState<string | null>(null);
   const [verificationToast, setVerificationToast] = useState<{ success: boolean; message: string } | null>(null);
 
   // Preview Student Check-in Modal
@@ -360,6 +362,8 @@ export const EventAttendanceQR: React.FC<EventAttendanceQRProps> = ({
         success: true,
         message: `${res.student.fullName} (${res.student.rollNumber}) verified successfully!`,
       });
+      setManualAction('check-in');
+      setManualActionTime(res.checkInTime);
       setVerificationToast({
         success: true,
         message: `Access Granted: ${res.student.fullName} is registered for ${currentEvent.title}.`,
@@ -374,6 +378,24 @@ export const EventAttendanceQR: React.FC<EventAttendanceQRProps> = ({
         message,
       });
       setVerificationToast({ success: false, message: message.includes('Invalid/Expired') ? message : `Invalid/Expired: ${message}` });
+    } finally {
+      setManualLoading(false);
+    }
+  };
+
+  const handleManualCheckOut = async () => {
+    if (!currentEvent || !manualInput.trim()) return;
+    setManualLoading(true);
+    setManualStatus(null);
+    try {
+      const res = await api.venueCheckOut(currentEvent.id, manualInput.trim(), venueToken);
+      setManualStatus({ success: true, message: res.message });
+      setManualAction('check-out');
+      setManualActionTime(res.checkOutTime);
+      setManualInput('');
+      if (onRefreshData) onRefreshData();
+    } catch (err: any) {
+      setManualStatus({ success: false, message: err.message || 'Checkout could not be recorded.' });
     } finally {
       setManualLoading(false);
     }
@@ -901,6 +923,14 @@ export const EventAttendanceQR: React.FC<EventAttendanceQRProps> = ({
               >
                 {manualLoading ? 'Checking...' : 'Check In'}
               </button>
+              <button
+                type="button"
+                onClick={handleManualCheckOut}
+                disabled={manualLoading || !manualInput.trim()}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-xs font-bold text-white transition-colors shrink-0"
+              >
+                {manualLoading ? 'Saving...' : 'Check Out'}
+              </button>
             </form>
 
             {manualStatus && (
@@ -917,6 +947,11 @@ export const EventAttendanceQR: React.FC<EventAttendanceQRProps> = ({
                   <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
                 )}
                 <span>{manualStatus.message}</span>
+                {manualActionTime && (
+                  <span className="ml-auto whitespace-nowrap font-mono text-[10px] text-slate-300">
+                    {manualAction === 'check-in' ? 'Check-in' : 'Check-out'}: {new Date(manualActionTime).toLocaleString()}
+                  </span>
+                )}
               </div>
             )}
           </div>
