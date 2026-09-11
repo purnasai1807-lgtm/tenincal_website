@@ -81,6 +81,7 @@ export interface StoredRegistration {
   attended: boolean;
   checkInTime?: string;
   notes?: string;
+  qrToken?: string;
 }
 
 const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
@@ -166,6 +167,7 @@ export async function initDb(): Promise<void> {
       notes TEXT
     );
   `);
+  await query(`ALTER TABLE registrations ADD COLUMN IF NOT EXISTS qr_token TEXT;`);
 
   await query(`CREATE INDEX IF NOT EXISTS idx_registrations_event_id ON registrations(event_id);`);
 
@@ -313,6 +315,7 @@ function rowToRegistration(row: any): StoredRegistration {
     attended: row.attended,
     checkInTime: row.check_in_time ? new Date(row.check_in_time).toISOString() : undefined,
     notes: row.notes ?? undefined,
+    qrToken: row.qr_token ?? undefined,
   };
 }
 
@@ -482,8 +485,8 @@ export async function insertRegistration(reg: StoredRegistration): Promise<Store
     `INSERT INTO registrations (
        id, registration_id, full_name, email_encrypted, phone_encrypted, roll_number, year, section,
        event_id, event_title, ticket_tier, ticket_price, payment_status, payment_id_encrypted,
-       registered_at, attended, check_in_time, notes
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+       registered_at, attended, check_in_time, notes, qr_token
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
     [
       reg.id,
       reg.registrationId,
@@ -503,6 +506,7 @@ export async function insertRegistration(reg: StoredRegistration): Promise<Store
       reg.attended,
       reg.checkInTime ?? null,
       reg.notes ?? null,
+      reg.qrToken ?? null,
     ]
   );
   return reg;

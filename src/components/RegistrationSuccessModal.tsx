@@ -18,9 +18,11 @@ import {
   MessageCircle,
   Send,
   PartyPopper,
-  Trophy
+  Trophy,
+  ShieldCheck
 } from 'lucide-react';
 import { StudentRegistration } from '../types';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface RegistrationSuccessModalProps {
   registration: StudentRegistration | null;
@@ -144,6 +146,23 @@ export const RegistrationSuccessModal: React.FC<RegistrationSuccessModalProps> =
     window.print();
   };
 
+  const qrValue = registration.qrToken
+    ? `${window.location.origin}/api/events/${encodeURIComponent(registration.eventId)}/entry-pass/validate?token=${encodeURIComponent(registration.qrToken)}`
+    : `${window.location.origin}/api/events/${registration.eventId}/venue-checkin?registrationId=${encodeURIComponent(registration.registrationId)}`;
+
+  const handleDownloadQr = () => {
+    const svg = document.querySelector<SVGElement>('#entry-pass-qr');
+    if (!svg) return;
+    const source = new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${registration.registrationId}-entry-pass.svg`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Google Calendar Link
   const googleCalendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
     registration.eventTitle
@@ -237,8 +256,22 @@ export const RegistrationSuccessModal: React.FC<RegistrationSuccessModalProps> =
                 </p>
               </div>
               <div className="p-2 rounded-xl bg-white text-slate-900 shrink-0">
-                <QrCode className="w-12 h-12" />
+                <QRCodeSVG id="entry-pass-qr" value={qrValue} size={88} level="H" includeMargin />
               </div>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="text-[11px] text-emerald-300 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Scan this signed QR at the venue entrance
+              </span>
+              <button
+                type="button"
+                onClick={handleDownloadQr}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500/10 text-cyan-300 border border-cyan-500/30"
+              >
+                Download QR
+              </button>
             </div>
 
             {/* Registration ID Banner (As emphasized on PDF Page 3) */}

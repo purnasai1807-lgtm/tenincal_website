@@ -71,6 +71,8 @@ export interface StudentRegistration {
   attended: boolean;
   checkInTime?: string;
   notes?: string;
+  qrToken?: string;
+  qrPayload?: string;
 }
 
 export interface NotificationItem {

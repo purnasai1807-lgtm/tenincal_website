@@ -66,6 +66,7 @@ app.use(express.urlencoded({ extended: true }));
 // --- Security & Cryptography Configuration ---
 const JWT_SECRET = process.env.JWT_SECRET || 'synapse_wids_aceec_jwt_secure_secret_2026_key_99';
 const ENCRYPTION_KEY = crypto.scryptSync('synapse_aes_encryption_master_key_2026', 'salt_wids_2026', 32);
+const QR_SIGNING_SECRET = process.env.QR_SIGNING_SECRET || process.env.JWT_SECRET || 'development-qr-secret-change-in-production';
 const IV_LENGTH = 16;
 
 function encryptField(text: string): string {
@@ -249,7 +250,33 @@ function formatRegistration(r: StoredRegistration) {
     attended: r.attended,
     checkInTime: r.checkInTime,
     notes: r.notes,
+    qrToken: r.qrToken,
+    qrPayload: r.qrToken ? JSON.stringify({ type: 'synapse-entry-pass', token: r.qrToken }) : undefined,
   };
+}
+
+function createEntryPassToken(registrationId: string, eventId: string): string {
+  const payload = Buffer.from(JSON.stringify({
+    registrationId,
+    eventId,
+    exp: Math.floor(Date.now() / 1000) + 90 * 24 * 60 * 60,
+  })).toString('base64url');
+  const signature = crypto.createHmac('sha256', QR_SIGNING_SECRET).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+function verifyEntryPassToken(token: string, eventId: string): string | null {
+  const [payload, signature] = String(token || '').split('.');
+  if (!payload || !signature) return null;
+  const expected = crypto.createHmac('sha256', QR_SIGNING_SECRET).update(payload).digest('base64url');
+  if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    if (decoded.eventId !== eventId || Number(decoded.exp) <= Math.floor(Date.now() / 1000)) return null;
+    return String(decoded.registrationId);
+  } catch {
+    return null;
+  }
 }
 
 // --- Authentication Middleware ---
@@ -540,6 +567,7 @@ app.post('/api/register', async (req: Request, res: Response) => {
     attended: false,
     notes: notes ? notes.trim() : undefined,
   };
+  newReg.qrToken = createEntryPassToken(newReg.registrationId, newReg.eventId);
   
   await insertRegistration(newReg);
   await incrementEventRegisteredCount(targetEvent.id);
@@ -887,15 +915,17 @@ app.post('/api/events/:id/venue-checkin', async (req: Request, res: Response) =>
     return res.status(404).json({ error: 'Technical event not found.' });
   }
 
-  if (!identifier || typeof identifier !== 'string' || !identifier.trim()) {
+  const qrRegistrationId = token ? verifyEntryPassToken(token, eventId) : null;
+  if (!qrRegistrationId && (!identifier || typeof identifier !== 'string' || !identifier.trim())) {
     return res.status(400).json({ error: 'Please enter your College Roll Number, Registration ID, or Registered Email.' });
   }
 
-  const q = identifier.trim().toLowerCase();
+  const q = (qrRegistrationId || identifier).trim().toLowerCase();
 
   // Find matching registered student for this event
   const eventRegs = await getRegistrationsByEvent(eventId);
   const student = eventRegs.find((r) => {
+    if (qrRegistrationId && r.registrationId.toLowerCase() === q) return true;
     if (r.rollNumber.toLowerCase() === q) return true;
     if (r.registrationId.toLowerCase() === q) return true;
     if (r.id.toLowerCase() === q) return true;
@@ -949,6 +979,26 @@ app.post('/api/events/:id/venue-checkin', async (req: Request, res: Response) =>
       venue: targetEvent.venue,
       dates: targetEvent.dates,
     },
+  });
+});
+
+// Read-only QR validation endpoint. Venue staff can scan the pass URL with any
+// phone camera; check-in remains an explicit action in the staff portal.
+app.get('/api/events/:id/entry-pass/validate', async (req: Request, res: Response) => {
+  const event = await getEventById(req.params.id);
+  const registrationId = verifyEntryPassToken(String(req.query.token || ''), req.params.id);
+  if (!event || !registrationId) {
+    return res.status(400).json({ valid: false, error: 'Invalid or expired entry pass.' });
+  }
+  const registration = await getRegistrationById(registrationId);
+  if (!registration || registration.eventId !== req.params.id) {
+    return res.status(404).json({ valid: false, error: 'Entry pass registration was not found.' });
+  }
+  return res.json({
+    valid: true,
+    checkedIn: registration.attended,
+    registration: formatRegistration(registration),
+    event: { id: event.id, title: event.title, venue: event.venue, dates: event.dates },
   });
 });
 
