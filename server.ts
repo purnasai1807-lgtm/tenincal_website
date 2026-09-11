@@ -23,6 +23,8 @@ import {
   insertRegistration,
   updateRegistration as dbUpdateRegistration,
   markRegistrationCheckedIn,
+  recordQrScan,
+  getQrScanSummary,
   deleteRegistration as dbDeleteRegistration,
   deleteRegistrationsByEvent,
   getCodingTests,
@@ -1014,6 +1016,7 @@ app.get('/api/events/:id/entry-pass/validate', async (req: Request, res: Respons
     return res.status(404).json({ valid: false, error: 'Entry pass registration was not found.' });
   }
   const checkInTime = new Date().toISOString();
+  await recordQrScan(registration.id, event.id, checkInTime);
   const checkedIn = await markRegistrationCheckedIn(registration.id, checkInTime);
   const currentRegistration = checkedIn ?? await getRegistrationById(registration.id);
   return res.json({
@@ -1044,9 +1047,10 @@ app.delete('/api/admin/students/:id', requireAdmin, async (req: Request, res: Re
 // Admin: CSV Export endpoint as requested in PDF page 5, 8, 19
 const handleExportCsv = async (req: Request, res: Response) => {
   const allRegistrations = await getRegistrations();
+  const scanSummary = await getQrScanSummary();
   const list = allRegistrations.map(formatRegistration);
   
-  const headers = ['Registration ID', 'Full Name', 'Email', 'Phone', 'Roll Number', 'Year', 'Section', 'Event', 'Ticket Tier', 'Payment Status', 'Registered At', 'Attended'];
+  const headers = ['Registration ID', 'Full Name', 'Email', 'Phone', 'Roll Number', 'Year', 'Section', 'Event', 'Ticket Tier', 'Payment Status', 'Registered At', 'Attended', 'QR Scan Count', 'QR Scan Times'];
   const csvRows = [headers.join(',')];
   
   list.forEach((s) => {
@@ -1063,6 +1067,8 @@ const handleExportCsv = async (req: Request, res: Response) => {
       `"${s.paymentStatus}"`,
       `"${new Date(s.registeredAt).toLocaleString()}"`,
       `"${s.attended ? 'Yes' : 'No'}"`,
+      `"${scanSummary.get(s.id)?.count || 0}"`,
+      `"${(scanSummary.get(s.id)?.times || []).map((time) => new Date(time).toLocaleString()).join('; ')}"`,
     ];
     csvRows.push(row.join(','));
   });

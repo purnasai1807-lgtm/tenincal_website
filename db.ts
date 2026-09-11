@@ -171,6 +171,15 @@ export async function initDb(): Promise<void> {
     );
   `);
   await query(`ALTER TABLE registrations ADD COLUMN IF NOT EXISTS qr_token TEXT;`);
+  await query(`
+    CREATE TABLE IF NOT EXISTS qr_scan_events (
+      id BIGSERIAL PRIMARY KEY,
+      registration_id TEXT NOT NULL REFERENCES registrations(id) ON DELETE CASCADE,
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      scanned_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await query(`CREATE INDEX IF NOT EXISTS idx_qr_scan_events_registration ON qr_scan_events(registration_id);`);
 
   await query(`CREATE INDEX IF NOT EXISTS idx_registrations_event_id ON registrations(event_id);`);
 
@@ -542,6 +551,29 @@ export async function markRegistrationCheckedIn(id: string, checkInTime: string)
     [id, checkInTime]
   );
   return res.rows[0] ? rowToRegistration(res.rows[0]) : undefined;
+}
+
+export async function recordQrScan(registrationId: string, eventId: string, scannedAt: string): Promise<void> {
+  await query(
+    `INSERT INTO qr_scan_events (registration_id, event_id, scanned_at) VALUES ($1, $2, $3)`,
+    [registrationId, eventId, scannedAt]
+  );
+}
+
+export async function getQrScanSummary(): Promise<Map<string, { count: number; times: string[] }>> {
+  const res = await query(
+    `SELECT registration_id, COUNT(*)::int AS scan_count,
+            ARRAY_AGG(scanned_at ORDER BY scanned_at) AS scan_times
+     FROM qr_scan_events
+     GROUP BY registration_id`
+  );
+  return new Map(res.rows.map((row: any) => [
+    row.registration_id,
+    {
+      count: Number(row.scan_count),
+      times: (row.scan_times || []).map((value: string | Date) => new Date(value).toISOString()),
+    },
+  ]));
 }
 
 export async function deleteRegistration(id: string): Promise<StoredRegistration | undefined> {
