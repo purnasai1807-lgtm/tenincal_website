@@ -405,6 +405,7 @@ export const api = {
     nameY?: number;
     fontSize?: number;
     fontColor?: string;
+    fontFamily?: string;
   }): Promise<{ success: boolean; template: AdminCertificateTemplate }> {
     return apiFetch('/api/admin/certificate-templates', {
       method: 'POST',

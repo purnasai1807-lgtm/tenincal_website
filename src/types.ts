@@ -255,6 +255,7 @@ export interface CertificateTemplateInfo {
   nameY: number;
   fontSize: number;
   fontColor: string;
+  fontFamily: string;
 }
 
 export interface MyCertificate {
@@ -273,6 +274,7 @@ export interface AdminCertificateTemplate {
   nameY: number;
   fontSize: number;
   fontColor: string;
+  fontFamily: string;
   createdAt: string;
   createdBy?: string;
 }

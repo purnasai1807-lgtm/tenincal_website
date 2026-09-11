@@ -1714,7 +1714,7 @@ app.delete('/api/admin/achievements/:id', requireAdmin, async (req: Request, res
 
 // Admin: Upload a certificate template (base64 image + name placement coordinates)
 app.post('/api/admin/certificate-templates', requireAdmin, async (req: AuthRequest, res: Response) => {
-  const { name, eventId, imageData, nameX = 50, nameY = 50, fontSize = 42, fontColor = '#1e293b' } = req.body;
+  const { name, eventId, imageData, nameX = 50, nameY = 50, fontSize = 42, fontColor = '#1e293b', fontFamily = 'Arial' } = req.body;
   if (!name || !imageData || typeof imageData !== 'string' || !imageData.startsWith('data:image')) {
     return res.status(400).json({ error: 'Template name and a valid base64 image (data:image/...) are required.' });
   }
@@ -1728,6 +1728,7 @@ app.post('/api/admin/certificate-templates', requireAdmin, async (req: AuthReque
     nameY: Number(nameY),
     fontSize: Number(fontSize),
     fontColor: String(fontColor),
+    fontFamily: String(fontFamily),
     createdAt: new Date().toISOString(),
     createdBy: req.user?.username,
   };

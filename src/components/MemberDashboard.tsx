@@ -598,7 +598,7 @@ const CertificateCard: React.FC<{ cert: MyCertificate; fullName: string }> = ({ 
       canvas.width = img.width;
       canvas.height = img.height;
       ctx.drawImage(img, 0, 0);
-      ctx.font = `bold ${cert.template!.fontSize}px "Segoe UI", sans-serif`;
+      ctx.font = `bold ${cert.template!.fontSize}px "${cert.template!.fontFamily}", sans-serif`;
       ctx.fillStyle = cert.template!.fontColor;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';

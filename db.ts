@@ -253,6 +253,7 @@ export async function initDb(): Promise<void> {
       name_y REAL NOT NULL DEFAULT 50,
       font_size INTEGER NOT NULL DEFAULT 42,
       font_color TEXT NOT NULL DEFAULT '#1e293b',
+      font_family TEXT NOT NULL DEFAULT 'Arial',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       created_by TEXT
     );
@@ -775,6 +776,7 @@ function rowToCertificateTemplate(row: any): StoredCertificateTemplate {
     nameY: Number(row.name_y),
     fontSize: Number(row.font_size),
     fontColor: row.font_color,
+    fontFamily: row.font_family ?? 'Arial',
     createdAt: new Date(row.created_at).toISOString(),
     createdBy: row.created_by ?? undefined,
   };
@@ -809,7 +811,7 @@ export async function getCodingTestById(id: string): Promise<StoredCodingTest | 
 export async function insertCodingTest(test: StoredCodingTest): Promise<StoredCodingTest> {
   await query(
     `INSERT INTO coding_tests (id, title, description, event_id, duration_minutes, questions, total_marks, is_published, created_at, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
     [
       test.id,
       test.title,
@@ -953,8 +955,8 @@ export async function getCertificateTemplateById(id: string): Promise<StoredCert
 
 export async function insertCertificateTemplate(t: StoredCertificateTemplate): Promise<StoredCertificateTemplate> {
   await query(
-    `INSERT INTO certificate_templates (id, name, event_id, image_data, name_x, name_y, font_size, font_color, created_at, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    `INSERT INTO certificate_templates (id, name, event_id, image_data, name_x, name_y, font_size, font_color, font_family, created_at, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
     [
       t.id,
       t.name,
@@ -964,6 +966,7 @@ export async function insertCertificateTemplate(t: StoredCertificateTemplate): P
       t.nameY,
       t.fontSize,
       t.fontColor,
+      t.fontFamily,
       t.createdAt,
       t.createdBy ?? null,
     ]
