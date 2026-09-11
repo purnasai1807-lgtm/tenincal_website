@@ -976,6 +976,7 @@ app.post('/api/events/:id/venue-checkin', async (req: Request, res: Response) =>
 
   const formatted = formatRegistration(student);
   const now = new Date().toISOString();
+  await recordQrScan(student.id, targetEvent.id, now, 'check_in');
 
   if (student.attended) {
     return res.json({
@@ -1089,13 +1090,20 @@ app.delete('/api/admin/students/:id', requireAdmin, async (req: Request, res: Re
 });
 
 // Admin: CSV Export endpoint as requested in PDF page 5, 8, 19
-const formatIndiaTimestamp = (value: string): string =>
-  new Intl.DateTimeFormat('en-IN', {
+const formatIndiaTimestamp = (value: string): string => {
+  const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Kolkata',
-    dateStyle: 'medium',
-    timeStyle: 'medium',
-    hour12: true,
-  }).format(new Date(value)) + ' IST';
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(value));
+  const values = Object.fromEntries(parts.map(({ type, value: partValue }) => [type, partValue]));
+  return `${values.day}/${values.month}/${values.year} ${values.hour}:${values.minute}:${values.second} IST`;
+};
 
 const handleExportCsv = async (req: Request, res: Response) => {
   const allRegistrations = await getRegistrations();
