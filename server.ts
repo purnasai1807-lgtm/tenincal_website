@@ -1266,15 +1266,14 @@ export { app };
 export default app;
 
 async function startServer() {
-  const { createServer: createViteServer } = await import('vite');
-  const vite = await createViteServer({
-    // The preview proxy does not expose Vite's HMR WebSocket endpoint.
-    // Disable HMR here so production-like previews do not receive a broken
-    // /@vite/client WebSocket client or attempt an unsupported connection.
-    server: { middlewareMode: true, hmr: false },
-    appType: 'spa',
-  });
-  app.use(vite.middlewares);
+  if (!process.env.VERCEL && process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      server: { middlewareMode: true, hmr: false },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  }
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Synapse × WiDS Full-Stack Server running on http://0.0.0.0:${PORT}`);
