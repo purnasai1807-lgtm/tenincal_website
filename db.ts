@@ -121,6 +121,15 @@ export async function initDb(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  await query(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      token_hash TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ
+    );
+  `);
+  await query(`CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id);`);
 
   await query(`
     CREATE TABLE IF NOT EXISTS events (
@@ -392,6 +401,40 @@ export async function updateUserProfile(
     [id, patch.fullName ?? null, patch.year ?? null, patch.section ?? null]
   );
   return res.rows[0] ? rowToUser(res.rows[0]) : undefined;
+}
+
+export async function createPasswordResetToken(
+  tokenHash: string,
+  userId: string,
+  expiresAt: string
+): Promise<void> {
+  await query(
+    `INSERT INTO password_reset_tokens (token_hash, user_id, expires_at)
+     VALUES ($1, $2, $3)`,
+    [tokenHash, userId, expiresAt]
+  );
+}
+
+export async function consumePasswordResetToken(
+  tokenHash: string
+): Promise<{ userId: string } | undefined> {
+  const res = await query(
+    `UPDATE password_reset_tokens
+     SET used_at = now()
+     WHERE token_hash = $1
+       AND used_at IS NULL
+       AND expires_at > now()
+     RETURNING user_id`,
+    [tokenHash]
+  );
+  return res.rows[0] ? { userId: res.rows[0].user_id } : undefined;
+}
+
+export async function updateUserPassword(
+  id: string,
+  passwordHash: string
+): Promise<void> {
+  await query('UPDATE users SET password_hash = $2 WHERE id = $1', [id, passwordHash]);
 }
 
 // --- Events ---

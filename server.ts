@@ -11,6 +11,9 @@ import {
   getUserByUsernameOrEmail,
   insertUser,
   updateUserProfile,
+  createPasswordResetToken,
+  consumePasswordResetToken,
+  updateUserPassword,
   getEvents,
   getEventById,
   insertEvent,
@@ -419,6 +422,64 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     rollNumber: newUser.rollNumber,
     year: newUser.year,
     section: newUser.section,
+  });
+
+  // Password recovery stores only a hash of the reset token. Delivery should be
+  // handled by the deployment's email provider; the API response is generic.
+  app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
+    const identifier = typeof req.body?.usernameOrEmail === 'string'
+      ? req.body.usernameOrEmail.trim()
+      : '';
+    const user = identifier ? await getUserByUsernameOrEmail(identifier) : undefined;
+    if (user) {
+      const token = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      await createPasswordResetToken(
+        tokenHash,
+        user.id,
+        new Date(Date.now() + 30 * 60 * 1000).toISOString()
+      );
+      // Integrate an email provider here to send the token to the user's
+      // verified address. Never return it in the API response.
+      console.info(`Password reset requested for ${user.id}; reset token delivery is pending email configuration.`);
+    }
+    res.json({ success: true, message: 'If the account exists, password recovery instructions will be sent to the registered email.' });
+  });
+
+  app.post('/api/auth/reset-password', async (req: Request, res: Response) => {
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    if (!token || password.length < 6) {
+      return res.status(400).json({ error: 'A valid reset token and password of at least 6 characters are required.' });
+    }
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const reset = await consumePasswordResetToken(tokenHash);
+    if (!reset) {
+      return res.status(400).json({ error: 'Reset token is invalid or expired.' });
+    }
+    await updateUserPassword(reset.userId, hashPassword(password));
+    res.json({ success: true, message: 'Password reset successfully. You can now sign in.' });
+  });
+
+  // Admin recovery fallback when no email provider is configured. The token is
+  // returned once and must be delivered to the user through a trusted channel.
+  app.post('/api/admin/users/:id/password-reset-token', requireAdmin, async (req: Request, res: Response) => {
+    const user = await getUsers().then((users) => users.find((candidate) => candidate.id === req.params.id));
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    const token = crypto.randomBytes(32).toString('hex');
+    await createPasswordResetToken(
+      crypto.createHash('sha256').update(token).digest('hex'),
+      user.id,
+      new Date(Date.now() + 30 * 60 * 1000).toISOString()
+    );
+    res.json({
+      success: true,
+      resetToken: token,
+      expiresInMinutes: 30,
+      message: 'Deliver this one-time token to the user through a trusted channel. It is not stored in plaintext.',
+    });
   });
   
   res.status(201).json({

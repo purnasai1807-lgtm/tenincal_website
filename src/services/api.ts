@@ -106,6 +106,27 @@ export const api = {
     return apiFetch<{ user: User }>('/api/auth/me');
   },
 
+  async requestPasswordReset(usernameOrEmail: string) {
+    return apiFetch<{ success: boolean; message: string }>('/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ usernameOrEmail }),
+    });
+  },
+
+  async resetPassword(token: string, password: string) {
+    return apiFetch<{ success: boolean; message: string }>('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    });
+  },
+
+  async createAdminPasswordResetToken(userId: string) {
+    return apiFetch<{ success: boolean; resetToken: string; expiresInMinutes: number; message: string }>(
+      `/api/admin/users/${userId}/password-reset-token`,
+      { method: 'POST' }
+    );
+  },
+
   // Events
   async getEvents(): Promise<EventItem[]> {
     return apiFetch<EventItem[]>('/api/events');
