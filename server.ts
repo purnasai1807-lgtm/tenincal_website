@@ -1275,6 +1275,8 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
+  if (process.env.VERCEL) return;
+
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Synapse × WiDS Full-Stack Server running on http://0.0.0.0:${PORT}`);
   });
