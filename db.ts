@@ -176,9 +176,11 @@ export async function initDb(): Promise<void> {
       id BIGSERIAL PRIMARY KEY,
       registration_id TEXT NOT NULL REFERENCES registrations(id) ON DELETE CASCADE,
       event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      action TEXT NOT NULL DEFAULT 'check_in',
       scanned_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  await query(`ALTER TABLE qr_scan_events ADD COLUMN IF NOT EXISTS action TEXT NOT NULL DEFAULT 'check_in';`);
   await query(`CREATE INDEX IF NOT EXISTS idx_qr_scan_events_registration ON qr_scan_events(registration_id);`);
 
   await query(`CREATE INDEX IF NOT EXISTS idx_registrations_event_id ON registrations(event_id);`);
@@ -553,25 +555,43 @@ export async function markRegistrationCheckedIn(id: string, checkInTime: string)
   return res.rows[0] ? rowToRegistration(res.rows[0]) : undefined;
 }
 
-export async function recordQrScan(registrationId: string, eventId: string, scannedAt: string): Promise<void> {
+export async function recordQrScan(
+  registrationId: string,
+  eventId: string,
+  scannedAt: string,
+  action: 'check_in' | 'check_out' = 'check_in'
+): Promise<void> {
   await query(
-    `INSERT INTO qr_scan_events (registration_id, event_id, scanned_at) VALUES ($1, $2, $3)`,
-    [registrationId, eventId, scannedAt]
+    `INSERT INTO qr_scan_events (registration_id, event_id, action, scanned_at) VALUES ($1, $2, $3, $4)`,
+    [registrationId, eventId, action, scannedAt]
   );
 }
 
-export async function getQrScanSummary(): Promise<Map<string, { count: number; times: string[] }>> {
+export async function getQrScanSummary(): Promise<Map<string, {
+  total: number;
+  checkInCount: number;
+  checkInTimes: string[];
+  checkOutCount: number;
+  checkOutTimes: string[];
+}>> {
   const res = await query(
-    `SELECT registration_id, COUNT(*)::int AS scan_count,
-            ARRAY_AGG(scanned_at ORDER BY scanned_at) AS scan_times
+    `SELECT registration_id,
+            COUNT(*)::int AS total_count,
+            COUNT(*) FILTER (WHERE action = 'check_in')::int AS check_in_count,
+            COUNT(*) FILTER (WHERE action = 'check_out')::int AS check_out_count,
+            ARRAY_AGG(scanned_at ORDER BY scanned_at) FILTER (WHERE action = 'check_in') AS check_in_times,
+            ARRAY_AGG(scanned_at ORDER BY scanned_at) FILTER (WHERE action = 'check_out') AS check_out_times
      FROM qr_scan_events
      GROUP BY registration_id`
   );
   return new Map(res.rows.map((row: any) => [
     row.registration_id,
     {
-      count: Number(row.scan_count),
-      times: (row.scan_times || []).map((value: string | Date) => new Date(value).toISOString()),
+      total: Number(row.total_count),
+      checkInCount: Number(row.check_in_count),
+      checkInTimes: (row.check_in_times || []).map((value: string | Date) => new Date(value).toISOString()),
+      checkOutCount: Number(row.check_out_count),
+      checkOutTimes: (row.check_out_times || []).map((value: string | Date) => new Date(value).toISOString()),
     },
   ]));
 }

@@ -1016,7 +1016,7 @@ app.get('/api/events/:id/entry-pass/validate', async (req: Request, res: Respons
     return res.status(404).json({ valid: false, error: 'Entry pass registration was not found.' });
   }
   const checkInTime = new Date().toISOString();
-  await recordQrScan(registration.id, event.id, checkInTime);
+  await recordQrScan(registration.id, event.id, checkInTime, 'check_in');
   const checkedIn = await markRegistrationCheckedIn(registration.id, checkInTime);
   const currentRegistration = checkedIn ?? await getRegistrationById(registration.id);
   return res.json({
@@ -1028,6 +1028,30 @@ app.get('/api/events/:id/entry-pass/validate', async (req: Request, res: Respons
     message: checkedIn
       ? `Attendance confirmed for ${registration.fullName}.`
       : `${registration.fullName} was already checked in.`,
+  });
+});
+
+// Explicit checkout approval. Checkout is logged separately from entry and does
+// not erase the attendee's confirmed attendance.
+app.post('/api/events/:id/entry-pass/checkout', async (req: Request, res: Response) => {
+  const event = await getEventById(req.params.id);
+  const registrationId = verifyEntryPassToken(String(req.body?.token || ''), req.params.id);
+  if (!event || !registrationId) {
+    return res.status(400).json({ valid: false, error: 'Invalid or expired entry pass.' });
+  }
+  const registration = await getRegistrationById(registrationId);
+  if (!registration || registration.eventId !== req.params.id) {
+    return res.status(404).json({ valid: false, error: 'Entry pass registration was not found.' });
+  }
+  const checkOutTime = new Date().toISOString();
+  await recordQrScan(registration.id, event.id, checkOutTime, 'check_out');
+  return res.json({
+    valid: true,
+    checkedOut: true,
+    checkOutTime,
+    registration: formatRegistration(registration),
+    event: { id: event.id, title: event.title, venue: event.venue, dates: event.dates },
+    message: `Checkout approved for ${registration.fullName}.`,
   });
 });
 
@@ -1050,7 +1074,7 @@ const handleExportCsv = async (req: Request, res: Response) => {
   const scanSummary = await getQrScanSummary();
   const list = allRegistrations.map(formatRegistration);
   
-  const headers = ['Registration ID', 'Full Name', 'Email', 'Phone', 'Roll Number', 'Year', 'Section', 'Event', 'Ticket Tier', 'Payment Status', 'Registered At', 'Attended', 'QR Scan Count', 'QR Scan Times'];
+  const headers = ['Registration ID', 'Full Name', 'Email', 'Phone', 'Roll Number', 'Year', 'Section', 'Event', 'Ticket Tier', 'Payment Status', 'Registered At', 'Attended', 'Total QR Scans', 'Check-in Count', 'Check-in Times', 'Check-out Count', 'Check-out Times'];
   const csvRows = [headers.join(',')];
   
   list.forEach((s) => {
@@ -1067,8 +1091,11 @@ const handleExportCsv = async (req: Request, res: Response) => {
       `"${s.paymentStatus}"`,
       `"${new Date(s.registeredAt).toLocaleString()}"`,
       `"${s.attended ? 'Yes' : 'No'}"`,
-      `"${scanSummary.get(s.id)?.count || 0}"`,
-      `"${(scanSummary.get(s.id)?.times || []).map((time) => new Date(time).toLocaleString()).join('; ')}"`,
+      `"${scanSummary.get(s.id)?.total || 0}"`,
+      `"${scanSummary.get(s.id)?.checkInCount || 0}"`,
+      `"${(scanSummary.get(s.id)?.checkInTimes || []).map((time) => new Date(time).toLocaleString()).join('; ')}"`,
+      `"${scanSummary.get(s.id)?.checkOutCount || 0}"`,
+      `"${(scanSummary.get(s.id)?.checkOutTimes || []).map((time) => new Date(time).toLocaleString()).join('; ')}"`,
     ];
     csvRows.push(row.join(','));
   });

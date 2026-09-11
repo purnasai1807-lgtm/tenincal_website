@@ -276,6 +276,13 @@ export const api = {
     });
   },
 
+  async venueCheckOut(eventId: string, token: string): Promise<{ checkedOut: boolean; checkOutTime: string; message: string }> {
+    return apiFetch(`/api/events/${eventId}/entry-pass/checkout`, {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  },
+
   // Member Dashboard: Coding Tests
   async getMyTests(): Promise<CodingTestSummary[]> {
     return apiFetch<CodingTestSummary[]>('/api/tests');
