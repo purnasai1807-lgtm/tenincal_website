@@ -106,6 +106,10 @@ function verifyPassword(password: string, hash: string): boolean {
   return hashPassword(password) === hash;
 }
 
+function isGmailAddress(email: string): boolean {
+  return /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@gmail\.com$/i.test(email.trim());
+}
+
 // Custom Pure-Node JWT Implementation (HMAC-SHA256)
 function signJwt(payload: any, expiresInSeconds = 86400): string {
   const header = { alg: 'HS256', typ: 'JWT' };
@@ -390,6 +394,9 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
   
   if (!username || !email || !password || !fullName) {
     return res.status(400).json({ error: 'Full name, username, email, and password are required.' });
+  }
+  if (!isGmailAddress(email)) {
+    return res.status(400).json({ error: 'Only valid @gmail.com email addresses can be used for accounts.' });
   }
   
   const existing =

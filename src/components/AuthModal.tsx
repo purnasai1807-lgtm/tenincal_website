@@ -187,11 +187,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Email Address *</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Verified Gmail Address *</label>
                 <input
                   type="email"
                   required
-                  placeholder="Enter email address"
+                  pattern="[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@gmail\.com"
+                  placeholder="yourname@gmail.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs"
