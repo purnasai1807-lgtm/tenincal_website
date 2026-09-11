@@ -1,3 +1,3 @@
-how to run:
-npm install
-npm run dev
+## how to run:
+## npm install
+## npm run dev
