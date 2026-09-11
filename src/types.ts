@@ -74,6 +74,10 @@ export interface StudentRegistration {
   notes?: string;
   qrToken?: string;
   qrPayload?: string;
+  checkInCount?: number;
+  checkInTimes?: string[];
+  checkOutCount?: number;
+  checkOutTimes?: string[];
 }
 
 export interface NotificationItem {

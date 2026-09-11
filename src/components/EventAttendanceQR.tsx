@@ -70,6 +70,13 @@ export const EventAttendanceQR: React.FC<EventAttendanceQRProps> = ({
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
 
   const qrContainerRef = useRef<HTMLDivElement>(null);
+  const formatIndiaTime = (value: string) =>
+    new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      dateStyle: 'medium',
+      timeStyle: 'medium',
+      hour12: true,
+    }).format(new Date(value)) + ' IST';
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -1023,8 +1030,22 @@ export const EventAttendanceQR: React.FC<EventAttendanceQRProps> = ({
                         <span className="text-emerald-400 flex items-center gap-1 font-mono">
                           <Clock className="w-3 h-3" />
                           {student.checkInTime
-                            ? new Date(student.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                            ? formatIndiaTime(student.checkInTime)
                             : 'Verified'}
+                        </span>
+                      </div>
+                      <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] font-mono text-slate-400">
+                        <span className="text-cyan-300">
+                          Check-in clicks: {student.checkInCount || 0}
+                        </span>
+                        <span className="text-amber-300">
+                          Check-out clicks: {student.checkOutCount || 0}
+                        </span>
+                        <span>
+                          In times: {(student.checkInTimes || []).map(formatIndiaTime).join(' | ') || 'None'}
+                        </span>
+                        <span>
+                          Out times: {(student.checkOutTimes || []).map(formatIndiaTime).join(' | ') || 'None'}
                         </span>
                       </div>
                     </div>

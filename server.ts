@@ -790,7 +790,18 @@ app.get('/api/admin/students', requireAdmin, async (req: Request, res: Response)
   const { search, year, section, eventId, sort, attended } = req.query;
   
   const allRegistrations = await getRegistrations();
-  let list = allRegistrations.map(formatRegistration);
+  const scanSummary = await getQrScanSummary();
+  let list = allRegistrations.map((registration) => {
+    const formatted = formatRegistration(registration);
+    const scans = scanSummary.get(registration.id);
+    return {
+      ...formatted,
+      checkInCount: scans?.checkInCount || 0,
+      checkInTimes: scans?.checkInTimes || [],
+      checkOutCount: scans?.checkOutCount || 0,
+      checkOutTimes: scans?.checkOutTimes || [],
+    };
+  });
   
   if (search && typeof search === 'string') {
     const q = search.trim().toLowerCase();
