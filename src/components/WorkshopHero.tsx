@@ -164,13 +164,7 @@ export const WorkshopHero: React.FC<WorkshopHeroProps> = ({
                 </p>
                 <div className="space-y-3">
                   {workshopEvent.speakers?.map((sp, i) => (
-                    <div key={i} className="flex items-center gap-3 p-2 rounded-xl bg-slate-800/40 border border-slate-700/40">
-                      <img
-                        src={sp.avatar}
-                        alt={sp.name}
-                        referrerPolicy="no-referrer"
-                        className="w-10 h-10 rounded-full object-cover border border-slate-700"
-                      />
+                    <div key={i} className="p-2 rounded-xl bg-slate-800/40 border border-slate-700/40">
                       <div>
                         <h4 className="text-xs font-bold text-white">{sp.name}</h4>
                         <p className="text-[11px] text-slate-400">{sp.role}</p>
