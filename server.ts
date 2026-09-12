@@ -1441,17 +1441,6 @@ app.post('/api/celebration', requireAdmin, (req: Request, res: Response) => {
     triggeredAt: Date.now(),
   };
 
-  // Push celebratory notification to notifications feed
-  notifications.unshift({
-    id: 'notif-celeb-' + Date.now(),
-    eventId: eventId || 'all',
-    title: `🎉 Event Success: ${title}`,
-    message: customMessage,
-    type: 'announcement',
-    createdAt: new Date().toISOString(),
-    targetRole: 'all',
-  });
-
   res.json({
     success: true,
     celebration: activeCelebration,
