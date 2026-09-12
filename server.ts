@@ -199,7 +199,7 @@ app.use((req, res, next) => {
 const MASTER_ADMIN: StoredUser = {
   id: 'usr-admin-purnasai',
   username: 'purnasai0718',
-  passwordHash: hashPassword('Synapse_Club_2k26_tech'),
+  passwordHash: hashPassword(process.env.ADMIN_PASSWORD || 'synapas_tech_admin'),
   fullName: 'Purna Sai',
   email: 'purnasai792@gmail.com',
   role: 'admin',

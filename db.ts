@@ -278,7 +278,12 @@ export async function initDb(): Promise<void> {
 // --- Idempotent master admin seed (never overwrites an existing account) ---
 export async function seedAdminIfMissing(admin: StoredUser): Promise<void> {
   const existing = await getUserByUsername(admin.username);
-  if (existing) return;
+  if (existing) {
+    if (existing.role === 'admin' && existing.passwordHash !== admin.passwordHash) {
+      await updateUserPassword(existing.id, admin.passwordHash);
+    }
+    return;
+  }
 
   const existingByEmail = await getUserByEmail(admin.email);
   if (existingByEmail) return;
