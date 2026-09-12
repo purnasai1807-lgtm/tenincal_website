@@ -29,13 +29,26 @@ class CelebrationSound {
     }
   }
 
-  playPop() {
+  async enableAudio() {
+    this.enabled = true;
+    try {
+      this.init();
+      if (this.ctx?.state === 'suspended') {
+        await this.ctx.resume();
+      }
+      return this.ctx?.state === 'running';
+    } catch {
+      return false;
+    }
+  }
+
+  async playPop() {
     if (!this.enabled) return;
     try {
       this.init();
       if (!this.ctx) return;
       if (this.ctx.state === 'suspended') {
-        this.ctx.resume();
+        await this.ctx.resume();
       }
 
       const osc = this.ctx.createOscillator();
@@ -59,13 +72,13 @@ class CelebrationSound {
     }
   }
 
-  playChime() {
+  async playChime() {
     if (!this.enabled) return;
     try {
       this.init();
       if (!this.ctx) return;
       if (this.ctx.state === 'suspended') {
-        this.ctx.resume();
+        await this.ctx.resume();
       }
 
       const freqs = [523.25, 659.25, 783.99, 1046.5];
@@ -106,11 +119,21 @@ export const FireworksOverlay: React.FC<FireworksOverlayProps> = ({
   const handleToggleSound = () => {
     soundManager.enabled = !soundActive;
     setSoundActive(!soundActive);
+    if (!soundActive) {
+      void soundManager.enableAudio().then(() => soundManager.playChime());
+    }
+  };
+
+  const handleEnableSound = () => {
+    void soundManager.enableAudio().then((enabled) => {
+      setSoundActive(enabled);
+      if (enabled) void soundManager.playChime();
+    });
   };
 
   // Trigger immediate confetti burst
   const triggerConfettiWave = () => {
-    soundManager.playPop();
+    void soundManager.playPop();
     // Burst from both corners + middle
     confetti({
       particleCount: 75,
@@ -138,7 +161,18 @@ export const FireworksOverlay: React.FC<FireworksOverlayProps> = ({
   useEffect(() => {
     if (!celebration) return;
 
-    soundManager.playChime();
+    void soundManager.enableAudio().then((enabled) => {
+      setSoundActive(enabled);
+      if (enabled) void soundManager.playChime();
+    });
+
+    // Browsers require a user gesture before allowing Web Audio. Unlock it
+    // on the first interaction anywhere on the page for this celebration.
+    const unlockAudio = () => {
+      void soundManager.enableAudio().then((enabled) => setSoundActive(enabled));
+    };
+    window.addEventListener('pointerdown', unlockAudio, { once: true });
+    window.addEventListener('keydown', unlockAudio, { once: true });
 
     // 1. Launch initial grand salute with canvas-confetti
     triggerConfettiWave();
@@ -313,6 +347,8 @@ export const FireworksOverlay: React.FC<FireworksOverlayProps> = ({
       clearInterval(confettiInterval);
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', resize);
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
     };
   }, [celebration, fireworkWaves]);
 
@@ -361,6 +397,15 @@ export const FireworksOverlay: React.FC<FireworksOverlayProps> = ({
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
+              {!soundActive && (
+                <button
+                  onClick={handleEnableSound}
+                  className="px-2 py-2 rounded-xl text-[10px] font-semibold text-amber-200 bg-amber-500/20 hover:bg-amber-500/30 transition-colors"
+                  title="Enable fireworks sound"
+                >
+                  Enable sound
+                </button>
+              )}
               <button
                 onClick={handleToggleSound}
                 className="p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-700 transition-colors"
