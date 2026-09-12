@@ -1256,6 +1256,7 @@ const handleExportCsv = async (req: Request, res: Response) => {
   
   list.forEach((s) => {
     const row = [
+      `"${s.id}"`,
       `"${s.registrationId}"`,
       `"${s.fullName.replace(/"/g, '""')}"`,
       `"${s.email}"`,
