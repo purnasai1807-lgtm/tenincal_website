@@ -40,7 +40,7 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
   }
 
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 30000);
+  const timeout = window.setTimeout(() => controller.abort(), 120000);
   let response: Response;
   try {
     response = await fetch(endpoint, {
@@ -49,12 +49,11 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
       signal: options.signal || controller.signal,
   });
   } catch (error) {
+    window.clearTimeout(timeout);
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error('The server took too long to respond. Please try again.');
     }
     throw error;
-  } finally {
-    window.clearTimeout(timeout);
   }
 
   if (!response.ok) {
@@ -70,9 +69,17 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
 
   const contentType = response.headers.get('content-type');
   if (contentType && contentType.includes('application/json')) {
-    return response.json();
+    try {
+      return await response.json();
+    } finally {
+      window.clearTimeout(timeout);
+    }
   }
-  return response.text() as unknown as T;
+  try {
+    return await response.text() as unknown as T;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 export const api = {
