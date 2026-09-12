@@ -431,22 +431,17 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
     };
     reader.onload = () => {
       const dataUrl = String(reader.result);
-      if (dataUrl.length <= 5_500_000) {
-        setImageData(dataUrl);
-        setProcessingImage(false);
-        return;
-      }
       const image = new Image();
       image.onload = () => {
-        const scale = Math.min(1, 2400 / Math.max(image.naturalWidth, image.naturalHeight));
+        const scale = Math.min(1, 1800 / Math.max(image.naturalWidth, image.naturalHeight));
         const canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
         canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
         canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
-        const compressed = canvas.toDataURL('image/jpeg', 0.82);
-        if (compressed.length > 6_500_000) {
+        const compressed = canvas.toDataURL('image/jpeg', 0.72);
+        if (compressed.length > 3_500_000) {
           setProcessingImage(false);
-          setError('This certificate image is too large. Please choose an image under 10 MB.');
+          setError('This certificate image is still too large after compression. Please choose a smaller image.');
           return;
         }
         setImageData(compressed);
@@ -480,7 +475,7 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
       load();
       setTimeout(() => setSuccess(null), 3000);
     } catch (e: any) {
-      setError(e.message);
+      setError(`Template could not be posted: ${e.message}`);
     } finally {
       setUploading(false);
     }
