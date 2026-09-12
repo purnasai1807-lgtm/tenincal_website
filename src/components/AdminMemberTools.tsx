@@ -391,6 +391,7 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
   const [uniqueIdFontColor, setUniqueIdFontColor] = useState('#1e293b');
   const [uniqueIdFontFamily, setUniqueIdFontFamily] = useState('Arial');
   const [uploading, setUploading] = useState(false);
+  const [processingImage, setProcessingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -416,16 +417,22 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
 
   const handleFile = (file: File) => {
     setError(null);
+    setImageData('');
     if (!file.type.startsWith('image/')) {
       setError('Please select an image certificate template.');
       return;
     }
+    setProcessingImage(true);
     const reader = new FileReader();
-    reader.onerror = () => setError('Could not read the certificate template file.');
+    reader.onerror = () => {
+      setProcessingImage(false);
+      setError('Could not read the certificate template file.');
+    };
     reader.onload = () => {
       const dataUrl = String(reader.result);
       if (dataUrl.length <= 5_500_000) {
         setImageData(dataUrl);
+        setProcessingImage(false);
         return;
       }
       const image = new Image();
@@ -437,12 +444,17 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
         canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
         const compressed = canvas.toDataURL('image/jpeg', 0.82);
         if (compressed.length > 6_500_000) {
+          setProcessingImage(false);
           setError('This certificate image is too large. Please choose an image under 10 MB.');
           return;
         }
         setImageData(compressed);
+        setProcessingImage(false);
       };
-      image.onerror = () => setError('Could not process the certificate template image.');
+      image.onerror = () => {
+        setProcessingImage(false);
+        setError('Could not process the certificate template image.');
+      };
       image.src = dataUrl;
     };
     reader.readAsDataURL(file);
@@ -450,6 +462,10 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
 
   const uploadTemplate = async () => {
     setError(null);
+    if (processingImage) {
+      setError('Please wait while the certificate image is processed.');
+      return;
+    }
     if (!name.trim() || !imageData) {
       setError('Template name and an image file are required.');
       return;
@@ -593,11 +609,11 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
           {success && <p className="text-xs text-emerald-400 flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" />{success}</p>}
           <button
             onClick={uploadTemplate}
-            disabled={uploading}
+            disabled={uploading || processingImage || !name.trim() || !imageData}
             className="w-full py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-cyan-500 to-indigo-600 disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
-            <span>Post Template</span>
+            <span>{processingImage ? 'Processing image...' : uploading ? 'Posting template...' : 'Post Template'}</span>
           </button>
         </div>
 
