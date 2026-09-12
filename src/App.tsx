@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Terminal, 
   Sparkles, 
@@ -35,6 +35,7 @@ export default function App() {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [celebration, setCelebration] = useState<CelebrationInfo | null>(null);
+  const lastCelebrationIdRef = useRef<string | null>(null);
 
   // Modals state
   const [registrationModalOpen, setRegistrationModalOpen] = useState(false);
@@ -79,6 +80,39 @@ export default function App() {
     api.getNotifications()
       .then(setNotifications)
       .catch((err) => console.error('Error loading notifications:', err));
+  }, []);
+
+  // Poll the public celebration endpoint so every open client sees fireworks
+  // after an admin launches them from another browser/session.
+  useEffect(() => {
+    let disposed = false;
+
+    const syncCelebration = async () => {
+      try {
+        const result = await api.getCurrentCelebration();
+        if (disposed) return;
+
+        if (result.active && result.celebration) {
+          const nextId = String(result.celebration.id || '');
+          if (nextId && nextId !== lastCelebrationIdRef.current) {
+            lastCelebrationIdRef.current = nextId;
+            setCelebration(result.celebration as CelebrationInfo);
+          }
+        } else {
+          lastCelebrationIdRef.current = null;
+          setCelebration(null);
+        }
+      } catch (error) {
+        console.error('Error syncing celebration:', error);
+      }
+    };
+
+    syncCelebration();
+    const intervalId = window.setInterval(syncCelebration, 1000);
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   // Private Admin Route & Keyboard Shortcut Listener
@@ -251,7 +285,10 @@ export default function App() {
             currentUser={currentUser}
             onOpenAuth={() => setAdminLoginModalOpen(true)}
             onOpenPrintRoster={handleOpenPrintRoster}
-            onTriggerCelebration={(nextCelebration) => setCelebration(nextCelebration as CelebrationInfo)}
+            onTriggerCelebration={(nextCelebration) => {
+              lastCelebrationIdRef.current = String(nextCelebration.id || '');
+              setCelebration(nextCelebration as CelebrationInfo);
+            }}
           />
         )}
 
