@@ -297,7 +297,15 @@ export default function App() {
 
       <FireworksOverlay
         celebration={celebration}
-        onDismiss={() => setCelebration(null)}
+        canStop={currentUser?.role === 'admin'}
+        onStop={() => {
+          api.stopCelebration()
+            .then(() => {
+              lastCelebrationIdRef.current = null;
+              setCelebration(null);
+            })
+            .catch((error) => console.error('Error stopping celebration:', error));
+        }}
       />
 
       {/* Institutional Footer */}

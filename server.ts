@@ -259,7 +259,6 @@ interface ActiveCelebration {
   message: string;
   adminName: string;
   triggeredAt: number;
-  durationMs: number;
 }
 let activeCelebration: ActiveCelebration | null = null;
 
@@ -1432,7 +1431,6 @@ app.post('/api/celebration', requireAdmin, (req: Request, res: Response) => {
     message: customMessage,
     adminName,
     triggeredAt: Date.now(),
-    durationMs: 16000, // 16 seconds of full-blast celebratory fireworks
   };
 
   // Push celebratory notification to notifications feed
@@ -1458,16 +1456,9 @@ app.get('/api/celebration/current', (req: Request, res: Response) => {
     return res.json({ active: false, celebration: null });
   }
 
-  const elapsed = Date.now() - activeCelebration.triggeredAt;
-  if (elapsed >= activeCelebration.durationMs) {
-    activeCelebration = null;
-    return res.json({ active: false, celebration: null });
-  }
-
   res.json({
     active: true,
     celebration: activeCelebration,
-    remainingMs: activeCelebration.durationMs - elapsed,
   });
 });
 

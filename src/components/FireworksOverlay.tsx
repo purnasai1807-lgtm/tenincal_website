@@ -14,7 +14,8 @@ export interface CelebrationInfo {
 
 interface FireworksOverlayProps {
   celebration: CelebrationInfo | null;
-  onDismiss: () => void;
+  canStop?: boolean;
+  onStop?: () => void;
 }
 
 // Sound effects using Web Audio API (safe, no external files required)
@@ -51,22 +52,35 @@ class CelebrationSound {
         await this.ctx.resume();
       }
 
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      
       const now = this.ctx.currentTime;
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(160 + Math.random() * 220, now);
-      osc.frequency.exponentialRampToValueAtTime(50, now + 0.25);
+      const whistle = this.ctx.createOscillator();
+      const whistleGain = this.ctx.createGain();
+      whistle.type = 'sine';
+      whistle.frequency.setValueAtTime(420, now);
+      whistle.frequency.exponentialRampToValueAtTime(1500, now + 0.42);
+      whistleGain.gain.setValueAtTime(0.001, now);
+      whistleGain.gain.exponentialRampToValueAtTime(0.12, now + 0.22);
+      whistleGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+      whistle.connect(whistleGain).connect(this.ctx.destination);
+      whistle.start(now);
+      whistle.stop(now + 0.5);
 
-      gain.gain.setValueAtTime(0.12, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-
-      osc.start(now);
-      osc.stop(now + 0.25);
+      const noise = this.ctx.createBufferSource();
+      const buffer = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.65, this.ctx.sampleRate);
+      const samples = buffer.getChannelData(0);
+      for (let i = 0; i < samples.length; i += 1) {
+        samples[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / samples.length, 1.8);
+      }
+      noise.buffer = buffer;
+      const boom = this.ctx.createBiquadFilter();
+      boom.type = 'lowpass';
+      boom.frequency.value = 900;
+      const boomGain = this.ctx.createGain();
+      boomGain.gain.setValueAtTime(0.001, now + 0.43);
+      boomGain.gain.exponentialRampToValueAtTime(0.55, now + 0.47);
+      boomGain.gain.exponentialRampToValueAtTime(0.001, now + 1.08);
+      noise.connect(boom).connect(boomGain).connect(this.ctx.destination);
+      noise.start(now + 0.43);
     } catch {
       // Audio autoplay policy handled silently
     }
@@ -109,7 +123,8 @@ const soundManager = new CelebrationSound();
 
 export const FireworksOverlay: React.FC<FireworksOverlayProps> = ({
   celebration,
-  onDismiss,
+  canStop = false,
+  onStop,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [soundActive, setSoundActive] = useState(true);
@@ -413,13 +428,15 @@ export const FireworksOverlay: React.FC<FireworksOverlayProps> = ({
               >
                 {soundActive ? <Volume2 className="w-4 h-4 text-cyan-400" /> : <VolumeX className="w-4 h-4" />}
               </button>
-              <button
-                onClick={onDismiss}
-                className="p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-700 transition-colors"
-                title="Dismiss Fireworks"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              {canStop && (
+                <button
+                  onClick={onStop}
+                  className="p-2 rounded-xl text-rose-300 hover:text-white bg-rose-500/20 hover:bg-rose-500/30 transition-colors"
+                  title="Stop fireworks for everyone"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </div>
 
