@@ -13,6 +13,8 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'tensorhub.d
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const TECHNICAL_TEAM_EMAIL = process.env.TECHNICAL_TEAM_EMAIL;
 const TECHNICAL_TEAM_PASSWORD = process.env.TECHNICAL_TEAM_PASSWORD;
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const APP_ORIGIN = process.env.APP_ORIGIN;
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 async function main() {
@@ -56,6 +58,7 @@ db.run(`
     attended INTEGER NOT NULL DEFAULT 0 CHECK (attended IN (0, 1)),
     checked_in_at TEXT,
     checked_out_at TEXT,
+    ticket_code TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(event_id, user_id)
   );
@@ -96,6 +99,8 @@ db.run(`
     expires_at TEXT NOT NULL, used_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
+try { db.run('ALTER TABLE event_registrations ADD COLUMN ticket_code TEXT'); } catch {}
+db.run('CREATE UNIQUE INDEX IF NOT EXISTS event_registrations_ticket_idx ON event_registrations(ticket_code)');
 
 const app = express();
 app.set('trust proxy', Number(process.env.TRUST_PROXY || 0));
@@ -133,6 +138,15 @@ if (TECHNICAL_TEAM_EMAIL && TECHNICAL_TEAM_PASSWORD) {
   if (existing) sql('UPDATE users SET role=? WHERE id=?').run('TECHNICAL_TEAM', existing.id);
   else sql('INSERT INTO users (name,email,password_hash,role) VALUES (?,?,?,?)').run(
     'TensorHub Technical Team', email, bcrypt.hashSync(TECHNICAL_TEAM_PASSWORD, 12), 'TECHNICAL_TEAM'
+  );
+}
+if (ADMIN_EMAIL && ADMIN_PASSWORD) {
+  const email = emailSchema.parse(ADMIN_EMAIL);
+  passwordSchema.parse(ADMIN_PASSWORD);
+  const existing = sql('SELECT id FROM users WHERE email=?').get(email);
+  if (existing) sql('UPDATE users SET role=? WHERE id=?').run('ADMIN', existing.id);
+  else sql('INSERT INTO users (name,email,password_hash,role) VALUES (?,?,?,?)').run(
+    'TensorHub Administrator', email, bcrypt.hashSync(ADMIN_PASSWORD, 12), 'ADMIN'
   );
 }
 
@@ -259,13 +273,24 @@ app.post('/api/events/:id/register', requireAuth, rateLimit({ windowMs: 15 * 60 
   const event = sql('SELECT id FROM events WHERE id=? AND published=1').get(req.params.id);
   if (!event) return issue(res, 404, 'Event not found');
   try {
-    const result = sql('INSERT INTO event_registrations (event_id,user_id,college_year) VALUES (?,?,?)').run(event.id, req.user.id, parsed.data.collegeYear);
+    const ticketCode = `TH-${crypto.randomBytes(12).toString('base64url')}`;
+    const result = sql('INSERT INTO event_registrations (event_id,user_id,college_year,ticket_code) VALUES (?,?,?,?)').run(event.id, req.user.id, parsed.data.collegeYear, ticketCode);
     audit(req, 'REGISTER', 'EVENT', event.id, { registrationId: result.lastInsertRowid, collegeYear: parsed.data.collegeYear });
-    res.status(201).json({ registration: sql('SELECT * FROM event_registrations WHERE id=?').get(result.lastInsertRowid) });
+    res.status(201).json({ registration: sql('SELECT * FROM event_registrations WHERE id=?').get(result.lastInsertRowid), ticket: { code: ticketCode, registrationId: result.lastInsertRowid } });
   } catch (error) {
-    if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') return issue(res, 409, 'You are already registered for this event');
+    if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' || /UNIQUE constraint failed/i.test(error.message || '')) {
+      return issue(res, 409, 'You are already registered for this event');
+    }
     throw error;
   }
+});
+app.get('/api/registrations/:id/ticket', requireAuth, (req, res) => {
+  const registration = sql(`SELECT r.*, e.title event_title, e.starts_at event_date
+    FROM event_registrations r JOIN events e ON e.id=r.event_id
+    WHERE r.id=?`).get(req.params.id);
+  if (!registration) return issue(res, 404, 'Registration not found');
+  if (registration.user_id !== req.user.id && req.user.role !== 'ADMIN') return issue(res, 403, 'You cannot access this ticket');
+  res.json({ ticket: { code: registration.ticket_code, registrationId: registration.id, event: registration.event_title, eventDate: registration.event_date, status: registration.status } });
 });
 app.use('/api/manage', requireAuth, requireTechnicalTeam);
 app.post('/api/manage/events', (req, res) => {
@@ -325,6 +350,20 @@ app.post('/api/reports', requireAuth, (req, res) => {
 app.get('/api/notifications', requireAuth, (req, res) => res.json({ notifications: sql('SELECT id,type,title,message,read_at readAt,created_at createdAt FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 50').all(req.user.id) }));
 app.post('/api/notifications/:id/read', requireAuth, (req, res) => { const result = sql("UPDATE notifications SET read_at=datetime('now') WHERE id=? AND user_id=?").run(req.params.id, req.user.id); if (!result.changes) return issue(res, 404, 'Notification not found'); res.status(204).end(); });
 app.use('/api/admin', requireAuth, requireAdmin);
+app.post('/api/admin/attendance/scan', rateLimit({ windowMs: 60 * 1000, limit: 60 }), (req, res) => {
+  const parsed = z.object({ ticketCode: z.string().trim().min(3).max(100), action: z.enum(['check_in', 'check_out']) }).safeParse(req.body);
+  if (!parsed.success) return issue(res, 400, 'Ticket code and scan action are required');
+  const registration = sql(`SELECT r.*, e.title event_title
+    FROM event_registrations r JOIN events e ON e.id=r.event_id
+    WHERE r.ticket_code=?`).get(parsed.data.ticketCode);
+  if (!registration) return issue(res, 404, 'Ticket not found');
+  if (registration.status !== 'ACTIVE') return issue(res, 409, 'Registration is not active');
+  const column = parsed.data.action === 'check_in' ? 'checked_in_at' : 'checked_out_at';
+  const timestamp = new Date().toISOString();
+  sql(`UPDATE event_registrations SET ${column}=?, attended=? WHERE id=?`).run(timestamp, parsed.data.action === 'check_in' ? 1 : registration.attended, registration.id);
+  audit(req, parsed.data.action.toUpperCase(), 'REGISTRATION', registration.id, { eventId: registration.event_id, ticketCode: parsed.data.ticketCode });
+  res.json({ attendance: { registrationId: registration.id, action: parsed.data.action, timestamp } });
+});
 app.get('/api/admin/users', (req, res) => {
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
   const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 25));

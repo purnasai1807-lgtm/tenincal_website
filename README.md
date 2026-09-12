@@ -44,3 +44,7 @@ All mutating API routes require a same-origin `Origin`/`Referer` check, authenti
 npm test
 npm run lint
 ```
+
+The end-to-end suite starts a real HTTP server against an isolated database and covers signup, login/session use,
+event discovery, concurrent student registrations, duplicate-registration protection, ticket retrieval, admin
+check-in/check-out scanning, and filtered CSV export.
