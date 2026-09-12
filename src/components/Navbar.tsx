@@ -46,9 +46,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => setActiveTab('home')}
           >
             <img
-              src="/synapse-logo.jpeg"
-              alt="Synapse, a WiDS community at ACE Engineering College"
-              className="w-10 h-10 rounded-full object-cover ring-1 ring-violet-400/50 shadow-lg shadow-violet-500/20 group-hover:scale-105 transition-transform duration-300"
+              src="/wids-worldwide.jpeg"
+              alt="Women in Data Science Worldwide"
+              className="w-24 h-11 rounded-lg object-contain bg-white px-1 shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform duration-300"
             />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
