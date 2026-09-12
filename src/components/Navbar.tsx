@@ -45,11 +45,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="flex items-center gap-3 cursor-pointer group min-w-0"
             onClick={() => setActiveTab('home')}
           >
-            <img
-              src="/wids-worldwide.jpeg"
-              alt="Women in Data Science Worldwide"
-              className="w-24 h-11 rounded-lg object-contain bg-white px-1 shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform duration-300"
-            />
+            <div className="flex items-center gap-2 shrink-0">
+              <img
+                src="/wids-worldwide.jpeg"
+                alt="Women in Data Science Worldwide"
+                className="w-24 h-11 rounded-lg object-contain bg-white px-1 shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform duration-300"
+              />
+              <img
+                src="/synapse-club.jpeg"
+                alt="Synapse Club, a WiDS community at ACE Engineering College"
+                className="w-11 h-11 rounded-full object-cover shadow-lg shadow-fuchsia-500/20 group-hover:scale-105 transition-transform duration-300"
+              />
+            </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-base tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
