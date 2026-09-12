@@ -45,6 +45,7 @@ db.run(`
     id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, slug TEXT NOT NULL UNIQUE,
     description TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT,
     location TEXT NOT NULL, registration_url TEXT NOT NULL, published INTEGER NOT NULL DEFAULT 1,
+    capacity INTEGER NOT NULL DEFAULT 100 CHECK (capacity > 0),
     created_by INTEGER REFERENCES users(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
@@ -99,6 +100,7 @@ db.run(`
     expires_at TEXT NOT NULL, used_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
+try { db.run('ALTER TABLE events ADD COLUMN capacity INTEGER NOT NULL DEFAULT 100'); } catch {}
 try { db.run('ALTER TABLE event_registrations ADD COLUMN ticket_code TEXT'); } catch {}
 db.run('CREATE UNIQUE INDEX IF NOT EXISTS event_registrations_ticket_idx ON event_registrations(ticket_code)');
 
@@ -119,6 +121,7 @@ const eventSchema = z.object({
   endsAt: z.string().datetime({ offset: true }).optional().nullable(),
   location: z.string().trim().min(2).max(200),
   registrationUrl: z.string().url().refine((v) => ['http:', 'https:'].includes(new URL(v).protocol), 'HTTPS or HTTP URL required'),
+  capacity: z.number().int().min(1).max(100000).optional().default(100),
   published: z.boolean().optional().default(true)
 });
 const slugify = (value) => `${value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${crypto.randomBytes(3).toString('hex')}`;
@@ -257,12 +260,12 @@ app.get('/api/events', (req, res) => {
   const where = search ? 'WHERE published=1 AND (title LIKE @search OR description LIKE @search OR location LIKE @search)' : 'WHERE published=1';
   const params = search ? { search: `%${search}%` } : {};
   const total = sql(`SELECT COUNT(*) count FROM events ${where}`).get(params).count;
-  const events = sql(`SELECT id,title,slug,description,starts_at startsAt,ends_at endsAt,location,registration_url registrationUrl
+  const events = sql(`SELECT id,title,slug,description,starts_at startsAt,ends_at endsAt,location,capacity,registration_url registrationUrl
     FROM events ${where} ORDER BY starts_at ASC LIMIT @limit OFFSET @offset`).all({ ...params, limit, offset: (page - 1) * limit });
   res.json({ events, page, limit, total, pages: Math.ceil(total / limit) });
 });
 app.get('/api/events/:slug', (req, res) => {
-  const event = sql(`SELECT id,title,slug,description,starts_at startsAt,ends_at endsAt,location,registration_url registrationUrl
+  const event = sql(`SELECT id,title,slug,description,starts_at startsAt,ends_at endsAt,location,capacity,registration_url registrationUrl
     FROM events WHERE slug=? AND published=1`).get(req.params.slug);
   if (!event) return issue(res, 404, 'Event not found');
   res.json({ event });
@@ -274,7 +277,12 @@ app.post('/api/events/:id/register', requireAuth, rateLimit({ windowMs: 15 * 60 
   if (!event) return issue(res, 404, 'Event not found');
   try {
     const ticketCode = `TH-${crypto.randomBytes(12).toString('base64url')}`;
-    const result = sql('INSERT INTO event_registrations (event_id,user_id,college_year,ticket_code) VALUES (?,?,?,?)').run(event.id, req.user.id, parsed.data.collegeYear, ticketCode);
+    const result = sql(`INSERT INTO event_registrations (event_id,user_id,college_year,ticket_code)
+      SELECT ?, ?, ?, ?
+      WHERE (SELECT COUNT(*) FROM event_registrations WHERE event_id=? AND status='ACTIVE')
+        < (SELECT capacity FROM events WHERE id=? AND published=1)`
+    ).run(event.id, req.user.id, parsed.data.collegeYear, ticketCode, event.id, event.id);
+    if (!result.changes) return issue(res, 409, 'Event capacity has been reached');
     audit(req, 'REGISTER', 'EVENT', event.id, { registrationId: result.lastInsertRowid, collegeYear: parsed.data.collegeYear });
     res.status(201).json({ registration: sql('SELECT * FROM event_registrations WHERE id=?').get(result.lastInsertRowid), ticket: { code: ticketCode, registrationId: result.lastInsertRowid } });
   } catch (error) {
@@ -296,8 +304,8 @@ app.use('/api/manage', requireAuth, requireTechnicalTeam);
 app.post('/api/manage/events', (req, res) => {
   const data = parseBody(eventSchema, req, res); if (!data) return;
   if (data.endsAt && new Date(data.endsAt) <= new Date(data.startsAt)) return issue(res, 400, 'End time must be after start time');
-  const result = sql(`INSERT INTO events (title,slug,description,starts_at,ends_at,location,registration_url,published,created_by)
-    VALUES (@title,@slug,@description,@startsAt,@endsAt,@location,@registrationUrl,@published,@createdBy)`).run({ ...data, slug: slugify(data.title), createdBy: req.user.id });
+  const result = sql(`INSERT INTO events (title,slug,description,starts_at,ends_at,location,capacity,registration_url,published,created_by)
+    VALUES (@title,@slug,@description,@startsAt,@endsAt,@location,@capacity,@registrationUrl,@published,@createdBy)`).run({ ...data, slug: slugify(data.title), createdBy: req.user.id });
   res.status(201).json({ event: sql('SELECT * FROM events WHERE id=?').get(result.lastInsertRowid) });
   audit(req, 'CREATE', 'EVENT', result.lastInsertRowid, { title: data.title });
 });
@@ -307,9 +315,11 @@ app.patch('/api/manage/events/:id', (req, res) => {
   if (!current) return issue(res, 404, 'Event not found');
   const next = { ...current, ...data };
   if (next.endsAt && new Date(next.endsAt) <= new Date(next.startsAt)) return issue(res, 400, 'End time must be after start time');
-  sql(`UPDATE events SET title=@title,description=@description,starts_at=@startsAt,ends_at=@endsAt,location=@location,
+  const activeRegistrations = sql("SELECT COUNT(*) count FROM event_registrations WHERE event_id=? AND status='ACTIVE'").get(current.id).count;
+  if (next.capacity < activeRegistrations) return issue(res, 409, `Capacity cannot be less than ${activeRegistrations} active registration(s)`);
+  sql(`UPDATE events SET title=@title,description=@description,starts_at=@startsAt,ends_at=@endsAt,location=@location,capacity=@capacity,
     registration_url=@registrationUrl,published=@published,updated_at=CURRENT_TIMESTAMP WHERE id=@id`).run({
-    ...next, id: current.id, startsAt: next.startsAt, endsAt: next.endsAt, registrationUrl: next.registrationUrl, published: next.published ? 1 : 0
+    ...next, id: current.id, startsAt: next.startsAt, endsAt: next.endsAt, capacity: next.capacity, registrationUrl: next.registrationUrl, published: next.published ? 1 : 0
   });
   res.json({ event: sql('SELECT * FROM events WHERE id=?').get(current.id) });
 });

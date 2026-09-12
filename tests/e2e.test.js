@@ -8,6 +8,7 @@ const path = require('node:path');
 const dbPath = path.join(__dirname, 'e2e.db');
 let child;
 let port;
+let primaryEventId;
 
 function startServer() {
   child = execFile(process.execPath, ['server.js'], {
@@ -17,6 +18,7 @@ function startServer() {
       PORT: '0',
       DB_PATH: dbPath,
       SESSION_SECRET: 'e2e-test-secret',
+      TRUST_PROXY: '1',
       ADMIN_EMAIL: 'admin@example.com',
       ADMIN_PASSWORD: 'admin-password-123'
     }
@@ -31,7 +33,7 @@ function startServer() {
   });
 }
 
-function request(method, route, body, cookie) {
+function request(method, route, body, cookie, forwardedIp) {
   return new Promise((resolve, reject) => {
     const requestOptions = {
       method, port, path: route,
@@ -39,7 +41,8 @@ function request(method, route, body, cookie) {
         Host: `127.0.0.1:${port}`,
         Origin: `http://127.0.0.1:${port}`,
         ...(body ? { 'Content-Type': 'application/json' } : {}),
-        ...(cookie ? { Cookie: cookie } : {})
+        ...(cookie ? { Cookie: cookie } : {}),
+        ...(forwardedIp ? { 'X-Forwarded-For': forwardedIp } : {})
       }
     };
     const req = http.request(requestOptions, (res) => {
@@ -72,6 +75,8 @@ test.after(() => {
 });
 
 test('completes student registration, ticket, admin attendance, and filtered CSV flow', async () => {
+  const unauthorizedReport = await request('GET', '/api/admin/reports/registrations.csv');
+  assert.equal(unauthorizedReport.status, 401);
   const adminLogin = await request('POST', '/api/auth/login', {
     email: 'admin@example.com', password: 'admin-password-123'
   });
@@ -87,6 +92,7 @@ test('completes student registration, ticket, admin attendance, and filtered CSV
   }, adminCookie);
   assert.equal(eventResponse.status, 201);
   const event = eventResponse.body.event;
+  primaryEventId = event.id;
   const listed = await request('GET', '/api/events');
   assert.equal(listed.status, 200);
   assert.equal(listed.body.events[0].id, event.id);
@@ -119,6 +125,8 @@ test('completes student registration, ticket, admin attendance, and filtered CSV
 
   const checkIn = await request('POST', '/api/admin/attendance/scan', { ticketCode: ticket.body.ticket.code, action: 'check_in' }, adminCookie);
   assert.equal(checkIn.status, 200);
+  const forbiddenScan = await request('POST', '/api/admin/attendance/scan', { ticketCode: ticket.body.ticket.code, action: 'check_out' }, students[1].cookie);
+  assert.equal(forbiddenScan.status, 403);
   const checkOut = await request('POST', '/api/admin/attendance/scan', { ticketCode: ticket.body.ticket.code, action: 'check_out' }, adminCookie);
   assert.equal(checkOut.status, 200);
 
@@ -128,6 +136,22 @@ test('completes student registration, ticket, admin attendance, and filtered CSV
   assert.match(report.body, /E2E Community Event/);
   assert.match(report.body, /Student 1/);
   assert.doesNotMatch(report.body, /Student 2/);
+
+  const limitedEventResponse = await request('POST', '/api/manage/events', {
+    title: 'Capacity Controlled Event',
+    description: 'An event used to verify atomic capacity enforcement.',
+    startsAt: '2026-11-15T10:00:00.000Z',
+    location: 'Overflow Hall',
+    registrationUrl: 'https://example.com/register',
+    capacity: 2
+  }, adminCookie);
+  assert.equal(limitedEventResponse.status, 201);
+  assert.equal(limitedEventResponse.body.event.capacity, 2);
+  const limitedAttempts = await Promise.all(students.map((student, index) => request(
+    'POST', `/api/events/${limitedEventResponse.body.event.id}/register`, { collegeYear: `${index + 1} Year` }, student.cookie
+  )));
+  assert.equal(limitedAttempts.filter((response) => response.status === 201).length, 2);
+  assert.equal(limitedAttempts.filter((response) => response.status === 409).length, 2);
 });
 
 test('keeps simultaneous duplicate registration attempts atomic', async () => {
@@ -136,12 +160,10 @@ test('keeps simultaneous duplicate registration attempts atomic', async () => {
   });
   assert.equal(signup.status, 201);
   const cookie = cookieFrom(signup);
-  const events = await request('GET', '/api/events');
-  const eventId = events.body.events[0].id;
-  const attempts = await Promise.all(Array.from({ length: 10 }, () => request(
-    'POST', `/api/events/${eventId}/register`, { collegeYear: '2 Year' }, cookie
+  const attempts = await Promise.all(Array.from({ length: 10 }, (_, index) => request(
+    'POST', `/api/events/${primaryEventId}/register`, { collegeYear: '2 Year' }, cookie, `10.0.0.${index + 1}`
   )));
   assert.equal(attempts.filter((response) => response.status === 201).length, 1);
-  assert.equal(attempts.filter((response) => response.status === 409).length, 4);
-  assert.equal(attempts.filter((response) => response.status === 429).length, 5);
+  assert.equal(attempts.filter((response) => response.status === 409).length, 9);
+  assert.equal(attempts.filter((response) => response.status === 429).length, 0);
 });
