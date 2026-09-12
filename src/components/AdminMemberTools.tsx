@@ -384,14 +384,7 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
   const [fontSize, setFontSize] = useState(42);
   const [fontColor, setFontColor] = useState('#1e293b');
   const [fontFamily, setFontFamily] = useState('Arial');
-  const [uniqueIdEnabled, setUniqueIdEnabled] = useState(true);
-  const [uniqueIdX, setUniqueIdX] = useState(50);
-  const [uniqueIdY, setUniqueIdY] = useState(58);
-  const [uniqueIdFontSize, setUniqueIdFontSize] = useState(14);
-  const [uniqueIdFontColor, setUniqueIdFontColor] = useState('#1e293b');
-  const [uniqueIdFontFamily, setUniqueIdFontFamily] = useState('Arial');
   const [uploading, setUploading] = useState(false);
-  const [processingImage, setProcessingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -417,65 +410,27 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
   useEffect(load, []);
 
   const handleFile = (file: File) => {
-    setError(null);
-    setImageData('');
-    if (!file.type.startsWith('image/')) {
-      setError('Please select an image certificate template.');
-      return;
-    }
-    setProcessingImage(true);
     const reader = new FileReader();
-    reader.onerror = () => {
-      setProcessingImage(false);
-      setError('Could not read the certificate template file.');
-    };
-    reader.onload = () => {
-      const dataUrl = String(reader.result);
-      const image = new Image();
-      image.onload = () => {
-        const scale = Math.min(1, 1800 / Math.max(image.naturalWidth, image.naturalHeight));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-        canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
-        const compressed = canvas.toDataURL('image/jpeg', 0.72);
-        if (compressed.length > 3_500_000) {
-          setProcessingImage(false);
-          setError('This certificate image is still too large after compression. Please choose a smaller image.');
-          return;
-        }
-        setImageData(compressed);
-        setProcessingImage(false);
-      };
-      image.onerror = () => {
-        setProcessingImage(false);
-        setError('Could not process the certificate template image.');
-      };
-      image.src = dataUrl;
-    };
+    reader.onload = () => setImageData(reader.result as string);
     reader.readAsDataURL(file);
   };
 
   const uploadTemplate = async () => {
     setError(null);
-    if (processingImage) {
-      setError('Please wait while the certificate image is processed.');
-      return;
-    }
     if (!name.trim() || !imageData) {
       setError('Template name and an image file are required.');
       return;
     }
     setUploading(true);
     try {
-      await api.createCertificateTemplate({ name, eventId: eventId || undefined, imageData, nameX, nameY, fontSize, fontColor, fontFamily, uniqueIdEnabled, uniqueIdX, uniqueIdY, uniqueIdFontSize, uniqueIdFontColor, uniqueIdFontFamily });
+      await api.createCertificateTemplate({ name, eventId: eventId || undefined, imageData, nameX, nameY, fontSize, fontColor, fontFamily });
       setSuccess(`Template "${name}" uploaded.`);
       setName('');
       setImageData('');
       load();
       setTimeout(() => setSuccess(null), 3000);
     } catch (e: any) {
-      setError(`Template could not be posted: ${e.message}`);
+      setError(e.message);
     } finally {
       setUploading(false);
     }
@@ -520,16 +475,6 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
             <Upload className="w-4 h-4 text-cyan-400" />
             <span>Post Certificate Template</span>
           </h3>
-          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
-            <p className="text-xs font-bold text-amber-300">Registration Unique ID</p>
-            <p className="text-[11px] leading-relaxed text-slate-300">
-              This is the unique event registration ID created when the member registers. It is printed automatically on approved certificates and cannot be replaced with a manually typed ID.
-            </p>
-            <label className="flex items-center gap-2 text-xs font-semibold text-white">
-              <input type="checkbox" checked={uniqueIdEnabled} onChange={(e) => setUniqueIdEnabled(e.target.checked)} className="accent-amber-500" />
-              Show registration unique ID on certificate
-            </label>
-          </div>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -568,11 +513,6 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
               >
                 Member Full Name
               </div>
-              {uniqueIdEnabled && (
-                <div className="absolute font-semibold" style={{ left: `${uniqueIdX}%`, top: `${uniqueIdY}%`, transform: 'translate(-50%, -50%)', fontSize: `${uniqueIdFontSize / 3}px`, color: uniqueIdFontColor, fontFamily: uniqueIdFontFamily }}>
-                  Unique ID: REGISTRATION-ID
-                </div>
-              )}
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
@@ -591,25 +531,16 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
             <label className="text-[10px] text-slate-400 font-mono">
               Font Color <input type="color" value={fontColor} onChange={(e) => setFontColor(e.target.value)} className="w-full mt-1 h-8 rounded-lg bg-slate-800 border border-slate-700" />
             </label>
-            {uniqueIdEnabled && (
-              <>
-                <label className="text-[10px] text-slate-400 font-mono">Unique ID X% <input type="number" min={0} max={100} value={uniqueIdX} onChange={(e) => setUniqueIdX(Number(e.target.value))} className="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white" /></label>
-                <label className="text-[10px] text-slate-400 font-mono">Unique ID Y% <input type="number" min={0} max={100} value={uniqueIdY} onChange={(e) => setUniqueIdY(Number(e.target.value))} className="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white" /></label>
-                <label className="text-[10px] text-slate-400 font-mono">Unique ID Size <input type="number" min={6} value={uniqueIdFontSize} onChange={(e) => setUniqueIdFontSize(Number(e.target.value))} className="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white" /></label>
-                <label className="text-[10px] text-slate-400 font-mono">Unique ID Style <select value={uniqueIdFontFamily} onChange={(e) => setUniqueIdFontFamily(e.target.value)} className="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white"><option>Arial</option><option>Georgia</option><option>Times New Roman</option><option>Verdana</option><option>Courier New</option></select></label>
-                <label className="text-[10px] text-slate-400 font-mono">Unique ID Color <input type="color" value={uniqueIdFontColor} onChange={(e) => setUniqueIdFontColor(e.target.value)} className="w-full mt-1 h-8 rounded-lg bg-slate-800 border border-slate-700" /></label>
-              </>
-            )}
           </div>
           {error && <p className="text-xs text-rose-400 flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5" />{error}</p>}
           {success && <p className="text-xs text-emerald-400 flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" />{success}</p>}
           <button
             onClick={uploadTemplate}
-            disabled={uploading || processingImage || !name.trim() || !imageData}
+            disabled={uploading}
             className="w-full py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-cyan-500 to-indigo-600 disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
-            <span>{processingImage ? 'Processing image...' : uploading ? 'Posting template...' : 'Post Template'}</span>
+            <span>Post Template</span>
           </button>
         </div>
 
