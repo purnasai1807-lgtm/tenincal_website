@@ -605,6 +605,8 @@ const CertificateCard: React.FC<{ cert: MyCertificate; fullName: string }> = ({ 
       const x = (cert.template!.nameX / 100) * canvas.width;
       const y = (cert.template!.nameY / 100) * canvas.height;
       ctx.fillText(fullName, x, y);
+      ctx.font = `600 ${Math.max(14, cert.template!.fontSize * 0.32)}px "${cert.template!.fontFamily}", sans-serif`;
+      ctx.fillText(`Unique ID: ${cert.uniqueId}`, x, y + cert.template!.fontSize * 1.35);
       setReady(true);
     };
     img.src = cert.template.imageData;

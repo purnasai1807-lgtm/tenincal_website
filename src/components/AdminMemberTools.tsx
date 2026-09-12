@@ -383,6 +383,7 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
   const [nameY, setNameY] = useState(50);
   const [fontSize, setFontSize] = useState(42);
   const [fontColor, setFontColor] = useState('#1e293b');
+  const [fontFamily, setFontFamily] = useState('Arial');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -418,7 +419,7 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
     }
     setUploading(true);
     try {
-      await api.createCertificateTemplate({ name, eventId: eventId || undefined, imageData, nameX, nameY, fontSize, fontColor });
+      await api.createCertificateTemplate({ name, eventId: eventId || undefined, imageData, nameX, nameY, fontSize, fontColor, fontFamily });
       setSuccess(`Template "${name}" uploaded.`);
       setName('');
       setImageData('');
@@ -505,6 +506,7 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
                   transform: 'translate(-50%, -50%)',
                   fontSize: `${fontSize / 3}px`,
                   color: fontColor,
+                  fontFamily,
                 }}
               >
                 Member Full Name
@@ -520,6 +522,9 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
             </label>
             <label className="text-[10px] text-slate-400 font-mono">
               Font Size (px) <input type="number" value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} className="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white" />
+            </label>            <label className="text-[10px] text-slate-400 font-mono">
+              Font Style
+              <select value={fontFamily} onChange={(e) => setFontFamily(e.target.value)} className="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white"><option>Arial</option><option>Georgia</option><option>Times New Roman</option><option>Verdana</option><option>Courier New</option></select>
             </label>
             <label className="text-[10px] text-slate-400 font-mono">
               Font Color <input type="color" value={fontColor} onChange={(e) => setFontColor(e.target.value)} className="w-full mt-1 h-8 rounded-lg bg-slate-800 border border-slate-700" />

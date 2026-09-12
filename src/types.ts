@@ -262,6 +262,7 @@ export interface MyCertificate {
   id: string;
   approvedAt: string;
   note?: string;
+  uniqueId: string;
   template: CertificateTemplateInfo | null;
 }
 
@@ -290,4 +291,5 @@ export interface AdminCertificateApproval {
   approvedBy?: string;
   fullName?: string;
   rollNumber?: string;
+  uniqueId?: string;
 }

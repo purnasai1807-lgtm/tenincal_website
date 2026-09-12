@@ -1251,7 +1251,7 @@ const handleExportCsv = async (req: Request, res: Response) => {
   const scanSummary = await getQrScanSummary();
   const list = allRegistrations.map(formatRegistration);
   
-  const headers = ['Registration ID', 'Full Name', 'Email', 'Phone', 'Roll Number', 'Year', 'Section', 'Event', 'Ticket Tier', 'Payment Status', 'Registered At', 'Attended', 'Total QR Scans', 'Check-in Count', 'Check-in Times', 'Check-out Count', 'Check-out Times'];
+  const headers = ['Unique ID Key', 'Registration ID', 'Full Name', 'Email', 'Phone', 'Roll Number', 'Year', 'Section', 'Event', 'Ticket Tier', 'Payment Status', 'Registered At', 'Attended', 'Total QR Scans', 'Check-in Count', 'Check-in Times', 'Check-out Count', 'Check-out Times'];
   const csvRows = [headers.join(',')];
   
   list.forEach((s) => {
@@ -1722,6 +1722,7 @@ app.delete('/api/admin/tests/:id', requireAdmin, async (req: Request, res: Respo
 app.get('/api/admin/tests/:id/submissions', requireAdmin, async (req: Request, res: Response) => {
   const submissions = await getSubmissionsByTest(req.params.id);
   const users = await getUsers();
+  const registrations = await getRegistrations();
   const usersById = new Map(users.map((u) => [u.id, u]));
   res.json(
     submissions.map((s) => ({
@@ -1842,6 +1843,9 @@ app.post('/api/admin/certificates/approve', requireAdmin, async (req: AuthReques
     return res.status(404).json({ error: `No member found matching "${identifier}".` });
   }
 
+  const registration = (await getRegistrations()).find((r) => r.rollNumber.toLowerCase() === (user.rollNumber || '').toLowerCase() && (!eventId || r.eventId === eventId));
+  const uniqueId = registration?.registrationId || `CERT-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+
   const approval: StoredCertificateApproval = {
     id: 'cert-app-' + crypto.randomUUID().slice(0, 8),
     templateId,
@@ -1853,19 +1857,21 @@ app.post('/api/admin/certificates/approve', requireAdmin, async (req: AuthReques
     approvedBy: req.user?.username,
   };
   const saved = await insertCertificateApproval(approval);
-  res.status(201).json({ success: true, approval: saved, approvedFor: { fullName: user.fullName, rollNumber: user.rollNumber } });
+  res.status(201).json({ success: true, approval: { ...saved, uniqueId }, approvedFor: { fullName: user.fullName, rollNumber: user.rollNumber, uniqueId } });
 });
 
 // Admin: List all certificate approvals
 app.get('/api/admin/certificates', requireAdmin, async (req: Request, res: Response) => {
   const approvals = await getCertificateApprovals();
   const users = await getUsers();
+  const registrations = await getRegistrations();
   const usersById = new Map(users.map((u) => [u.id, u]));
   res.json(
     approvals.map((a) => ({
       ...a,
       fullName: usersById.get(a.userId)?.fullName,
       rollNumber: usersById.get(a.userId)?.rollNumber,
+      uniqueId: registrations.find((r) => r.rollNumber.toLowerCase() === (usersById.get(a.userId)?.rollNumber || "").toLowerCase() && (!a.eventId || r.eventId === a.eventId))?.registrationId || a.id,
       avatarUrl: usersById.get(a.userId)?.avatarUrl,
     }))
   );
@@ -1883,6 +1889,7 @@ app.delete('/api/admin/certificates/:id', requireAdmin, async (req: Request, res
 // Member: My approved certificates — ready for automatic client-side rendering/download
 app.get('/api/certificates/mine', authenticateToken, async (req: AuthRequest, res: Response) => {
   const approvals = await getCertificateApprovalsByUser(req.user!.id);
+  const registrations = await getRegistrations();
   const templates = await getCertificateTemplates();
   const templatesById = new Map(templates.map((t) => [t.id, t]));
   res.json(
@@ -1892,6 +1899,7 @@ app.get('/api/certificates/mine', authenticateToken, async (req: AuthRequest, re
         id: a.id,
         approvedAt: a.approvedAt,
         note: a.note,
+        uniqueId: registrations.find((r) => r.eventId === a.eventId)?.registrationId || a.id,
         template: t
           ? {
               id: t.id,
@@ -1901,6 +1909,7 @@ app.get('/api/certificates/mine', authenticateToken, async (req: AuthRequest, re
               nameY: t.nameY,
               fontSize: t.fontSize,
               fontColor: t.fontColor,
+            fontFamily: t.fontFamily,
             }
           : null,
       };
