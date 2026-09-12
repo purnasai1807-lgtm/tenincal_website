@@ -480,6 +480,16 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
             <Upload className="w-4 h-4 text-cyan-400" />
             <span>Post Certificate Template</span>
           </h3>
+          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
+            <p className="text-xs font-bold text-amber-300">Registration Unique ID</p>
+            <p className="text-[11px] leading-relaxed text-slate-300">
+              This is the unique event registration ID created when the member registers. It is printed automatically on approved certificates and cannot be replaced with a manually typed ID.
+            </p>
+            <label className="flex items-center gap-2 text-xs font-semibold text-white">
+              <input type="checkbox" checked={uniqueIdEnabled} onChange={(e) => setUniqueIdEnabled(e.target.checked)} className="accent-amber-500" />
+              Show registration unique ID on certificate
+            </label>
+          </div>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -540,10 +550,6 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
             </label>
             <label className="text-[10px] text-slate-400 font-mono">
               Font Color <input type="color" value={fontColor} onChange={(e) => setFontColor(e.target.value)} className="w-full mt-1 h-8 rounded-lg bg-slate-800 border border-slate-700" />
-            </label>
-            <label className="col-span-2 flex items-center gap-2 text-[10px] text-slate-300 font-mono">
-              <input type="checkbox" checked={uniqueIdEnabled} onChange={(e) => setUniqueIdEnabled(e.target.checked)} className="accent-cyan-500" />
-              Automatically print the event registration ID on the certificate
             </label>
             {uniqueIdEnabled && (
               <>
