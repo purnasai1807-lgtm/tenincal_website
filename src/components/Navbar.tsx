@@ -47,11 +47,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <div className="flex items-center gap-2 shrink-0">
               <img
-                src="/wids-worldwide.jpeg"
-                alt="Women in Data Science Worldwide"
-                className="w-24 h-11 rounded-lg object-contain bg-white px-1 shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform duration-300"
-              />
-              <img
                 src="/synapse-club.jpeg"
                 alt="Synapse Club, a WiDS community at ACE Engineering College"
                 className="w-11 h-11 rounded-full object-cover shadow-lg shadow-fuchsia-500/20 group-hover:scale-105 transition-transform duration-300"
@@ -143,6 +138,11 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Right Action Area */}
           <div className="flex items-center gap-3">
+            <img
+              src="/wids-worldwide.jpeg"
+              alt="Women in Data Science Worldwide"
+              className="hidden sm:block w-24 h-11 rounded-lg object-contain bg-white px-1 shadow-lg shadow-cyan-500/20"
+            />
             {/* Quick Register CTA */}
             <button
               id="quick-register-nav-btn"
