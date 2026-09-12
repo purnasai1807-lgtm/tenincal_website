@@ -391,10 +391,7 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
   const [approveIdentifier, setApproveIdentifier] = useState('');
   const [approveTemplateId, setApproveTemplateId] = useState('');
   const [approving, setApproving] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ user: { fullName: string; username: string; rollNumber?: string }; uniqueId: string; template: AdminCertificateTemplate } | null>(null);
-  const [certificateVerified, setCertificateVerified] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -472,21 +469,15 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
     load();
   };
 
-  const previewCertificate = async () => {
-    setApprovalError(null); setPreview(null); setCertificateVerified(false);
-    if (!approveIdentifier.trim() || !approveTemplateId) { setApprovalError('Select a certificate template and enter the member roll number, username, or email first.'); return; }
-    setPreviewing(true);
-    try { setPreview(await api.previewCertificate(approveIdentifier.trim(), approveTemplateId)); } catch (e: any) { setApprovalError(e.message); } finally { setPreviewing(false); }
-  };
-
   const approve = async () => {
     setApprovalError(null);
-    if (!preview || !certificateVerified) { setApprovalError('Preview the certificate and verify the name and unique ID before approving.'); return; }
+    if (!approveIdentifier.trim() || !approveTemplateId) { setApprovalError('Select a certificate template and enter the member identifier first.'); return; }
     setApproving(true);
     try {
-      const res: any = await api.approveCertificate({ identifier: approveIdentifier, templateId: approveTemplateId, eventId: preview.template.eventId, verifiedUniqueId: preview.uniqueId });
-      setSuccess(`Certificate approved for ${res.approvedFor?.fullName || approveIdentifier}. Unique ID: ${preview.uniqueId}`);
-      setApproveIdentifier(''); setPreview(null); setCertificateVerified(false); load(); setTimeout(() => setSuccess(null), 4000);
+      const template = templates.find((item) => item.id === approveTemplateId);
+      const res: any = await api.approveCertificate({ identifier: approveIdentifier, templateId: approveTemplateId, eventId: template?.eventId });
+      setSuccess(`Certificate approved for ${res.approvedFor?.fullName || approveIdentifier}. Registration ID: ${res.approvedFor?.uniqueId || 'assigned automatically'}`);
+      setApproveIdentifier(''); load(); setTimeout(() => setSuccess(null), 4000);
     } catch (e: any) { setApprovalError(e.message); } finally { setApproving(false); }
   };
 
@@ -585,7 +576,7 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
           </p>
           <select
             value={approveTemplateId}
-            onChange={(e) => { setApproveTemplateId(e.target.value); setPreview(null); setCertificateVerified(false); }}
+            onChange={(e) => setApproveTemplateId(e.target.value)}
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-cyan-500"
           >
             <option value="">-- Select Certificate Template --</option>
@@ -595,45 +586,15 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
           </select>
           <input
             value={approveIdentifier}
-            onChange={(e) => { setApproveIdentifier(e.target.value); setPreview(null); setCertificateVerified(false); }}
+            onChange={(e) => setApproveIdentifier(e.target.value)}
             placeholder="Roll number, username, or email"
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-sm text-white focus:outline-none focus:border-cyan-500"
           />
-          <button
-            type="button"
-            onClick={previewCertificate}
-            disabled={previewing || !approveTemplateId || !approveIdentifier.trim()}
-            className="w-full py-2.5 rounded-xl text-xs font-bold text-cyan-200 bg-cyan-950/60 border border-cyan-500/40 disabled:opacity-50"
-          >
-            {previewing ? 'Checking registration...' : 'Preview & Verify Certificate'}
-          </button>
           {approvalError && <p className="text-xs text-rose-400 flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5" />{approvalError}</p>}
-          {preview && (
-            <div className="space-y-3 rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-3">
-              <p className="text-xs font-bold text-emerald-300">Certificate verification preview</p>
-              <div className="relative overflow-hidden rounded-lg border border-slate-700">
-                <img src={preview.template.imageData} alt="Certificate preview" className="w-full" />
-                <div
-                  className="absolute text-center font-bold"
-                  style={{ left: `${preview.template.nameX}%`, top: `${preview.template.nameY}%`, transform: 'translate(-50%, -50%)', color: preview.template.fontColor, fontFamily: preview.template.fontFamily, fontSize: Math.max(10, preview.template.fontSize / 3) }}
-                >
-                  {preview.user.fullName}
-                </div>
-                {preview.template.uniqueIdEnabled !== false && <div className="absolute text-center font-semibold" style={{ left: `${preview.template.uniqueIdX ?? preview.template.nameX}%`, top: `${preview.template.uniqueIdY ?? preview.template.nameY + 8}%`, transform: 'translate(-50%, -50%)', color: preview.template.uniqueIdFontColor ?? preview.template.fontColor, fontFamily: preview.template.uniqueIdFontFamily ?? preview.template.fontFamily, fontSize: Math.max(8, (preview.template.uniqueIdFontSize ?? preview.template.fontSize * 0.32) / 3) }}>Unique ID: {preview.uniqueId}</div>}
-              </div>
-              <p className="text-[11px] text-slate-300">
-                Member: <b>{preview.user.fullName}</b> · Unique ID: <b className="text-amber-300">{preview.uniqueId}</b>
-              </p>
-              <label className="flex items-start gap-2 text-[11px] text-slate-300">
-                <input type="checkbox" checked={certificateVerified} onChange={(e) => setCertificateVerified(e.target.checked)} className="mt-0.5 accent-emerald-500" />
-                I verified that this member, certificate, and unique ID are correct.
-              </label>
-            </div>
-          )}
 
           <button
             onClick={approve}
-            disabled={approving || !preview || !certificateVerified}
+            disabled={approving}
             className="w-full py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-500 to-cyan-600 disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {approving && <Loader2 className="w-4 h-4 animate-spin" />}

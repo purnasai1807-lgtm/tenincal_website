@@ -454,7 +454,7 @@ export const api = {
     return apiFetch('/api/admin/certificates/preview?' + new URLSearchParams({ identifier, templateId }).toString());
   },
 
-  async approveCertificate(payload: { identifier: string; templateId: string; eventId?: string; note?: string; verifiedUniqueId: string }) {
+  async approveCertificate(payload: { identifier: string; templateId: string; eventId?: string; note?: string }) {
     return apiFetch('/api/admin/certificates/approve', {
       method: 'POST',
       body: JSON.stringify(payload),

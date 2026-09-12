@@ -1850,7 +1850,7 @@ app.get('/api/admin/certificates/preview', requireAdmin, async (req: Request, re
 
 // Admin: Approve a member for a certificate — this is what unlocks automatic download
 app.post('/api/admin/certificates/approve', requireAdmin, async (req: AuthRequest, res: Response) => {
-  const { identifier, templateId, eventId, note, verifiedUniqueId } = req.body;
+  const { identifier, templateId, eventId, note } = req.body;
   if (!identifier || !templateId) {
     return res.status(400).json({ error: 'Member identifier and templateId are required.' });
   }
@@ -1870,10 +1870,6 @@ app.post('/api/admin/certificates/approve', requireAdmin, async (req: AuthReques
     return res.status(422).json({ error: 'This member must have a completed event registration before a certificate can be approved.' });
   }
   const uniqueId = registration.registrationId;
-
-  if (!verifiedUniqueId || verifiedUniqueId !== uniqueId) {
-    return res.status(409).json({ error: 'Certificate must be previewed and verified before approval.' });
-  }
 
   const approval: StoredCertificateApproval = {
     id: 'cert-app-' + crypto.randomUUID().slice(0, 8),
