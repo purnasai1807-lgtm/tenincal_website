@@ -37,7 +37,7 @@ import {
   QrCode,
   Award
 } from 'lucide-react';
-import { StudentRegistration, AnalyticsData, User, EventItem } from '../types';
+import { StudentRegistration, AnalyticsData, User, EventItem, NotificationItem } from '../types';
 import { api } from '../services/api';
 import { EventFormModal } from './EventFormModal';
 import { RegistrationGrowthChart } from './RegistrationGrowthChart';
@@ -61,6 +61,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [selectedEventForQr, setSelectedEventForQr] = useState<string | undefined>(undefined);
   const [students, setStudents] = useState<StudentRegistration[]>([]);
   const [eventsList, setEventsList] = useState<EventItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [showGrowthInAttendees, setShowGrowthInAttendees] = useState(true);
@@ -101,7 +102,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (currentUser?.role !== 'admin') return;
     setLoading(true);
     try {
-      const [studRes, analRes, evRes] = await Promise.all([
+      const [studRes, analRes, evRes, notificationRes] = await Promise.all([
         api.getAdminStudents({
           search,
           year: yearFilter,
@@ -112,10 +113,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }),
         api.getAdminAnalytics(),
         api.getEvents(),
+        api.getNotifications(),
       ]);
       setStudents(studRes.students);
       setAnalytics(analRes);
       setEventsList(evRes);
+      setNotifications(notificationRes);
     } catch (err) {
       console.error('Failed to load admin data:', err);
     } finally {
@@ -216,6 +219,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }, 1500);
     } catch (err: any) {
       alert(err.message || 'Failed to send broadcast.');
+    }
+  };
+
+  const handleDeleteNotification = async (notification: NotificationItem) => {
+    if (!window.confirm(`Delete notification "${notification.title}"?`)) return;
+    try {
+      await api.deleteNotification(notification.id);
+      setNotifications((current) => current.filter((item) => item.id !== notification.id));
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete notification.');
     }
   };
 
@@ -429,6 +442,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <span>Tests, Achievements & Certificates</span>
         </button>
       </div>
+
+      <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+        <div className="mb-3 flex items-center justify-between"><div><h2 className="text-sm font-bold text-white">Published Notifications</h2><p className="text-[11px] text-slate-500">Admin-only controls for removing messages from the member feed.</p></div><Bell className="h-4 w-4 text-cyan-400" /></div>
+        {notifications.length === 0 ? <p className="text-xs text-slate-500">No notifications published.</p> : <div className="space-y-2">{notifications.map((notification) => <div key={notification.id} className="flex items-start justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3"><div className="min-w-0"><p className="truncate text-xs font-semibold text-white">{notification.title}</p><p className="mt-1 text-xs text-slate-400">{notification.message}</p><p className="mt-1 text-[10px] text-slate-600">{new Date(notification.createdAt).toLocaleString()}</p></div><button type="button" onClick={() => handleDeleteNotification(notification)} className="shrink-0 rounded-lg p-2 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300" title="Delete notification" aria-label={"Delete notification " + notification.title}><Trash2 className="h-4 w-4" /></button></div>)}</div>}
+      </section>
 
       {/* TAB 1: TECHNICAL EVENTS MANAGEMENT */}
       {activeAdminTab === 'events' && (

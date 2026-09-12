@@ -187,6 +187,12 @@ export const api = {
     return apiFetch<NotificationItem[]>('/api/notifications');
   },
 
+  async deleteNotification(notificationId: string): Promise<{ success: boolean }> {
+    return apiFetch<{ success: boolean }>(`/api/admin/notifications/${encodeURIComponent(notificationId)}`, {
+      method: 'DELETE',
+    });
+  },
+
   // Admin APIs
   async getAdminStudents(params?: {
     search?: string;

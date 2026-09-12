@@ -749,6 +749,14 @@ app.get('/api/notifications', (req: Request, res: Response) => {
   res.json(notifications);
 });
 
+app.delete('/api/admin/notifications/:notificationId', requireAdmin, (req: Request, res: Response) => {
+  const notificationId = String(req.params.notificationId || '').trim();
+  const index = notifications.findIndex((notification) => notification.id === notificationId);
+  if (index === -1) return res.status(404).json({ error: 'Notification not found.' });
+  notifications.splice(index, 1);
+  res.json({ success: true });
+});
+
 // --- ADMIN ENDPOINTS (Protected by requireAdmin) ---
 
 // Admin: Post / Create New Technical Event
