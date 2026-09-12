@@ -415,8 +415,36 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
   useEffect(load, []);
 
   const handleFile = (file: File) => {
+    setError(null);
+    if (!file.type.startsWith('image/')) {
+      setError('Please select an image certificate template.');
+      return;
+    }
     const reader = new FileReader();
-    reader.onload = () => setImageData(reader.result as string);
+    reader.onerror = () => setError('Could not read the certificate template file.');
+    reader.onload = () => {
+      const dataUrl = String(reader.result);
+      if (dataUrl.length <= 5_500_000) {
+        setImageData(dataUrl);
+        return;
+      }
+      const image = new Image();
+      image.onload = () => {
+        const scale = Math.min(1, 2400 / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL('image/jpeg', 0.82);
+        if (compressed.length > 6_500_000) {
+          setError('This certificate image is too large. Please choose an image under 10 MB.');
+          return;
+        }
+        setImageData(compressed);
+      };
+      image.onerror = () => setError('Could not process the certificate template image.');
+      image.src = dataUrl;
+    };
     reader.readAsDataURL(file);
   };
 
