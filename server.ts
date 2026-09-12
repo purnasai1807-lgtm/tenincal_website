@@ -1826,9 +1826,25 @@ app.delete('/api/admin/certificate-templates/:id', requireAdmin, async (req: Req
   res.json({ success: true, message: 'Certificate template deleted.' });
 });
 
+// Admin: Preview a certificate before approval; no certificate is issued by this endpoint.
+app.get('/api/admin/certificates/preview', requireAdmin, async (req: Request, res: Response) => {
+  const identifier = String(req.query.identifier || '').trim();
+  const templateId = String(req.query.templateId || '').trim();
+  if (!identifier || !templateId) return res.status(400).json({ error: 'Identifier and templateId are required.' });
+  const template = await getCertificateTemplateById(templateId);
+  if (!template) return res.status(404).json({ error: 'Certificate template not found.' });
+  const user = (await getUserByUsernameOrEmail(identifier)) || (await getUsers()).find((u) => u.rollNumber?.toLowerCase() === identifier.toLowerCase());
+  if (!user) return res.status(404).json({ error: 'No member found for the supplied identifier.' });
+  const registrations = await getRegistrations();
+  const registration = registrations.find((r) => r.rollNumber.toLowerCase() === (user.rollNumber || '').toLowerCase() && (!template.eventId || r.eventId === template.eventId));
+  const uniqueId = registration?.registrationId;
+  if (!uniqueId) return res.status(422).json({ error: 'This member has no matching registration for the selected certificate template event.' });
+  res.json({ user: { fullName: user.fullName, username: user.username, rollNumber: user.rollNumber }, uniqueId, template });
+});
+
 // Admin: Approve a member for a certificate — this is what unlocks automatic download
 app.post('/api/admin/certificates/approve', requireAdmin, async (req: AuthRequest, res: Response) => {
-  const { identifier, templateId, eventId, note } = req.body;
+  const { identifier, templateId, eventId, note, verifiedUniqueId } = req.body;
   if (!identifier || !templateId) {
     return res.status(400).json({ error: 'Member identifier and templateId are required.' });
   }
@@ -1845,6 +1861,10 @@ app.post('/api/admin/certificates/approve', requireAdmin, async (req: AuthReques
 
   const registration = (await getRegistrations()).find((r) => r.rollNumber.toLowerCase() === (user.rollNumber || '').toLowerCase() && (!eventId || r.eventId === eventId));
   const uniqueId = registration?.registrationId || `CERT-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+
+  if (!verifiedUniqueId || verifiedUniqueId !== uniqueId) {
+    return res.status(409).json({ error: 'Certificate must be previewed and verified before approval.' });
+  }
 
   const approval: StoredCertificateApproval = {
     id: 'cert-app-' + crypto.randomUUID().slice(0, 8),

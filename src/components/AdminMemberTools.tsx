@@ -391,6 +391,9 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
   const [approveIdentifier, setApproveIdentifier] = useState('');
   const [approveTemplateId, setApproveTemplateId] = useState('');
   const [approving, setApproving] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [preview, setPreview] = useState<{ user: { fullName: string; username: string; rollNumber?: string }; uniqueId: string; template: AdminCertificateTemplate } | null>(null);
+  const [certificateVerified, setCertificateVerified] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -438,24 +441,22 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
     load();
   };
 
+  const previewCertificate = async () => {
+    setError(null); setPreview(null); setCertificateVerified(false);
+    if (!approveIdentifier.trim() || !approveTemplateId) { setError('Select a template and identifier before previewing.'); return; }
+    setPreviewing(true);
+    try { setPreview(await api.previewCertificate(approveIdentifier.trim(), approveTemplateId)); } catch (e: any) { setError(e.message); } finally { setPreviewing(false); }
+  };
+
   const approve = async () => {
     setError(null);
-    if (!approveIdentifier.trim() || !approveTemplateId) {
-      setError('Select a template and enter the member identifier to approve.');
-      return;
-    }
+    if (!preview || !certificateVerified) { setError('Preview the certificate and verify the name and unique ID before approving.'); return; }
     setApproving(true);
     try {
-      const res: any = await api.approveCertificate({ identifier: approveIdentifier, templateId: approveTemplateId });
-      setSuccess(`Certificate approved for ${res.approvedFor?.fullName || approveIdentifier}. It will auto-appear in their dashboard for download.`);
-      setApproveIdentifier('');
-      load();
-      setTimeout(() => setSuccess(null), 4000);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setApproving(false);
-    }
+      const res: any = await api.approveCertificate({ identifier: approveIdentifier, templateId: approveTemplateId, eventId: preview.template.eventId, verifiedUniqueId: preview.uniqueId });
+      setSuccess(`Certificate approved for ${res.approvedFor?.fullName || approveIdentifier}. Unique ID: ${preview.uniqueId}`);
+      setApproveIdentifier(''); setPreview(null); setCertificateVerified(false); load(); setTimeout(() => setSuccess(null), 4000);
+    } catch (e: any) { setError(e.message); } finally { setApproving(false); }
   };
 
   const revokeApproval = async (id: string) => {
@@ -553,7 +554,7 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
           </p>
           <select
             value={approveTemplateId}
-            onChange={(e) => setApproveTemplateId(e.target.value)}
+            onChange={(e) => { setApproveTemplateId(e.target.value); setPreview(null); setCertificateVerified(false); }}
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-cyan-500"
           >
             <option value="">-- Select Certificate Template --</option>
@@ -563,13 +564,46 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
           </select>
           <input
             value={approveIdentifier}
-            onChange={(e) => setApproveIdentifier(e.target.value)}
+            onChange={(e) => { setApproveIdentifier(e.target.value); setPreview(null); setCertificateVerified(false); }}
             placeholder="Roll number, username, or email"
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-sm text-white focus:outline-none focus:border-cyan-500"
           />
           <button
+            type="button"
+            onClick={previewCertificate}
+            disabled={previewing}
+            className="w-full py-2.5 rounded-xl text-xs font-bold text-cyan-200 bg-cyan-950/60 border border-cyan-500/40 disabled:opacity-50"
+          >
+            {previewing ? 'Checking registration...' : 'Preview & Verify Certificate'}
+          </button>
+          {preview && (
+            <div className="space-y-3 rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-3">
+              <p className="text-xs font-bold text-emerald-300">Certificate verification preview</p>
+              <div className="relative overflow-hidden rounded-lg border border-slate-700">
+                <img src={preview.template.imageData} alt="Certificate preview" className="w-full" />
+                <div
+                  className="absolute text-center font-bold"
+                  style={{ left: `${preview.template.nameX}%`, top: `${preview.template.nameY}%`, transform: 'translate(-50%, -50%)', color: preview.template.fontColor, fontFamily: preview.template.fontFamily, fontSize: Math.max(10, preview.template.fontSize / 3) }}
+                >
+                  {preview.user.fullName}
+                  <div className="mt-1" style={{ fontSize: Math.max(8, preview.template.fontSize / 4) }}>
+                    Unique ID: {preview.uniqueId}
+                  </div>
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Member: <b>{preview.user.fullName}</b> · Unique ID: <b className="text-amber-300">{preview.uniqueId}</b>
+              </p>
+              <label className="flex items-start gap-2 text-[11px] text-slate-300">
+                <input type="checkbox" checked={certificateVerified} onChange={(e) => setCertificateVerified(e.target.checked)} className="mt-0.5 accent-emerald-500" />
+                I verified that this member, certificate, and unique ID are correct.
+              </label>
+            </div>
+          )}
+
+          <button
             onClick={approve}
-            disabled={approving}
+            disabled={approving || !preview || !certificateVerified}
             className="w-full py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-500 to-cyan-600 disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {approving && <Loader2 className="w-4 h-4 animate-spin" />}

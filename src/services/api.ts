@@ -424,7 +424,11 @@ export const api = {
     return apiFetch(`/api/admin/certificate-templates/${id}`, { method: 'DELETE' });
   },
 
-  async approveCertificate(payload: { identifier: string; templateId: string; eventId?: string; note?: string }) {
+  async previewCertificate(identifier: string, templateId: string): Promise<{ user: { fullName: string; username: string; rollNumber?: string }; uniqueId: string; template: AdminCertificateTemplate }> {
+    return apiFetch('/api/admin/certificates/preview?' + new URLSearchParams({ identifier, templateId }).toString());
+  },
+
+  async approveCertificate(payload: { identifier: string; templateId: string; eventId?: string; note?: string; verifiedUniqueId: string }) {
     return apiFetch('/api/admin/certificates/approve', {
       method: 'POST',
       body: JSON.stringify(payload),
