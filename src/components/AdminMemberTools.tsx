@@ -399,6 +399,7 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
   const [approveTemplateId, setApproveTemplateId] = useState('');
   const [approving, setApproving] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ user: { fullName: string; username: string; rollNumber?: string }; uniqueId: string; template: AdminCertificateTemplate } | null>(null);
   const [certificateVerified, setCertificateVerified] = useState(false);
 
@@ -492,21 +493,21 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
   };
 
   const previewCertificate = async () => {
-    setError(null); setPreview(null); setCertificateVerified(false);
-    if (!approveIdentifier.trim() || !approveTemplateId) { setError('Select a template and identifier before previewing.'); return; }
+    setApprovalError(null); setPreview(null); setCertificateVerified(false);
+    if (!approveIdentifier.trim() || !approveTemplateId) { setApprovalError('Select a certificate template and enter the member roll number, username, or email first.'); return; }
     setPreviewing(true);
-    try { setPreview(await api.previewCertificate(approveIdentifier.trim(), approveTemplateId)); } catch (e: any) { setError(e.message); } finally { setPreviewing(false); }
+    try { setPreview(await api.previewCertificate(approveIdentifier.trim(), approveTemplateId)); } catch (e: any) { setApprovalError(e.message); } finally { setPreviewing(false); }
   };
 
   const approve = async () => {
-    setError(null);
-    if (!preview || !certificateVerified) { setError('Preview the certificate and verify the name and unique ID before approving.'); return; }
+    setApprovalError(null);
+    if (!preview || !certificateVerified) { setApprovalError('Preview the certificate and verify the name and unique ID before approving.'); return; }
     setApproving(true);
     try {
       const res: any = await api.approveCertificate({ identifier: approveIdentifier, templateId: approveTemplateId, eventId: preview.template.eventId, verifiedUniqueId: preview.uniqueId });
       setSuccess(`Certificate approved for ${res.approvedFor?.fullName || approveIdentifier}. Unique ID: ${preview.uniqueId}`);
       setApproveIdentifier(''); setPreview(null); setCertificateVerified(false); load(); setTimeout(() => setSuccess(null), 4000);
-    } catch (e: any) { setError(e.message); } finally { setApproving(false); }
+    } catch (e: any) { setApprovalError(e.message); } finally { setApproving(false); }
   };
 
   const revokeApproval = async (id: string) => {
@@ -645,11 +646,12 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
           <button
             type="button"
             onClick={previewCertificate}
-            disabled={previewing}
+            disabled={previewing || !approveTemplateId || !approveIdentifier.trim()}
             className="w-full py-2.5 rounded-xl text-xs font-bold text-cyan-200 bg-cyan-950/60 border border-cyan-500/40 disabled:opacity-50"
           >
             {previewing ? 'Checking registration...' : 'Preview & Verify Certificate'}
           </button>
+          {approvalError && <p className="text-xs text-rose-400 flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5" />{approvalError}</p>}
           {preview && (
             <div className="space-y-3 rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-3">
               <p className="text-xs font-bold text-emerald-300">Certificate verification preview</p>
