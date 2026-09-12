@@ -24,14 +24,17 @@ import { AuthModal } from './components/AuthModal';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { PrintableRosterModal } from './components/PrintableRosterModal';
 import { VenueCheckInModal } from './components/VenueCheckInModal';
+import { FireworksOverlay } from './components/FireworksOverlay';
 import { api, authStorage } from './services/api';
 import { User, EventItem, StudentRegistration, NotificationItem } from './types';
+import { CelebrationInfo } from './components/FireworksOverlay';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(authStorage.getUser());
   const [activeTab, setActiveTab] = useState<'home' | 'events' | 'student-portal' | 'admin-dashboard' | 'load-balancer'>('home');
   const [events, setEvents] = useState<EventItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [celebration, setCelebration] = useState<CelebrationInfo | null>(null);
 
   // Modals state
   const [registrationModalOpen, setRegistrationModalOpen] = useState(false);
@@ -248,11 +251,17 @@ export default function App() {
             currentUser={currentUser}
             onOpenAuth={() => setAdminLoginModalOpen(true)}
             onOpenPrintRoster={handleOpenPrintRoster}
+            onTriggerCelebration={(nextCelebration) => setCelebration(nextCelebration as CelebrationInfo)}
           />
         )}
 
         {activeTab === 'load-balancer' && <LoadBalancerMonitor />}
       </main>
+
+      <FireworksOverlay
+        celebration={celebration}
+        onDismiss={() => setCelebration(null)}
+      />
 
       {/* Institutional Footer */}
       <footer className="border-t border-slate-800 bg-[#080c13] py-12 text-slate-400 text-xs">

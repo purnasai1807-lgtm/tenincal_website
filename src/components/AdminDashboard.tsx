@@ -559,6 +559,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <QrCode className="w-3.5 h-3.5 text-cyan-400" />
                           <span>Venue QR</span>
                         </button>
+                        <button
+                          onClick={() => handleLaunchCelebration(ev)}
+                          className="px-2 py-1 rounded-lg bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 border border-amber-500/30 transition-colors flex items-center gap-1 text-[11px] font-medium"
+                          title="Celebrate completed event with fireworks"
+                        >
+                          <PartyPopper className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Fireworks</span>
+                        </button>
                       </div>
 
                       <div className="flex items-center gap-1.5">

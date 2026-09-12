@@ -13,7 +13,9 @@ import {
   Cpu, 
   Compass,
   CheckCircle,
-  Clock
+  Clock,
+  X,
+  Maximize2
 } from 'lucide-react';
 import { EventItem, EventCategory, User } from '../types';
 
@@ -36,6 +38,7 @@ export const EventCatalog: React.FC<EventCatalogProps> = ({
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [fullScreenImage, setFullScreenImage] = useState<{ src: string; title: string } | null>(null);
 
   const categories: { label: string; value: string }[] = [
     { label: 'All Technical Events', value: 'all' },
@@ -129,11 +132,21 @@ export const EventCatalog: React.FC<EventCatalogProps> = ({
               >
                 <div>
                   {event.imageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setFullScreenImage({ src: event.imageUrl!, title: event.title })}
+                      className="relative block w-full cursor-zoom-in group/image"
+                      aria-label={`View ${event.title} poster full screen`}
+                    >
                     <img
                       src={event.imageUrl}
                       alt={`${event.title} event poster`}
                       className="w-full h-44 object-cover rounded-xl mb-5 border border-slate-800"
                     />
+                      <span className="absolute right-3 top-3 rounded-lg bg-slate-950/75 p-2 text-white opacity-0 transition-opacity group-hover/image:opacity-100">
+                        <Maximize2 className="h-4 w-4" />
+                      </span>
+                    </button>
                   )}
                   {/* Card Header & Badge */}
                   <div className="flex items-start justify-between gap-3 mb-3">
@@ -262,6 +275,30 @@ export const EventCatalog: React.FC<EventCatalogProps> = ({
             >
               Reset filters
             </button>
+            {fullScreenImage && (
+              <div
+                className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/95 p-4 sm:p-8"
+                role="dialog"
+                aria-modal="true"
+                aria-label={`${fullScreenImage.title} full-screen image`}
+                onClick={() => setFullScreenImage(null)}
+              >
+                <button
+                  type="button"
+                  className="absolute right-4 top-4 rounded-full bg-white/10 p-3 text-white hover:bg-white/20"
+                  onClick={() => setFullScreenImage(null)}
+                  aria-label="Close full-screen image"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+                <img
+                  src={fullScreenImage.src}
+                  alt={`${fullScreenImage.title} event poster full screen`}
+                  className="max-h-[92vh] max-w-[96vw] rounded-xl object-contain shadow-2xl"
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </div>
+            )}
           </div>
         ) : null}
       </div>
