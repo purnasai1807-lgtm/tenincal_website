@@ -1899,7 +1899,7 @@ app.get('/api/certificates/mine', authenticateToken, async (req: AuthRequest, re
         id: a.id,
         approvedAt: a.approvedAt,
         note: a.note,
-        uniqueId: registrations.find((r) => r.eventId === a.eventId)?.registrationId || a.id,
+        uniqueId: registrations.find((r) => r.rollNumber.toLowerCase() === (req.user?.rollNumber || "").toLowerCase() && (!a.eventId || r.eventId === a.eventId))?.registrationId || a.id,
         template: t
           ? {
               id: t.id,
