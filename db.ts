@@ -222,7 +222,6 @@ export async function initDb(): Promise<void> {
       created_by TEXT
     );
   `);
-
   await query(`
     CREATE TABLE IF NOT EXISTS test_submissions (
       id TEXT PRIMARY KEY,
@@ -265,6 +264,12 @@ export async function initDb(): Promise<void> {
       created_by TEXT
     );
   `);
+  await query(`ALTER TABLE certificate_templates ADD COLUMN IF NOT EXISTS unique_id_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
+  await query(`ALTER TABLE certificate_templates ADD COLUMN IF NOT EXISTS unique_id_x REAL NOT NULL DEFAULT 50`);
+  await query(`ALTER TABLE certificate_templates ADD COLUMN IF NOT EXISTS unique_id_y REAL NOT NULL DEFAULT 58`);
+  await query(`ALTER TABLE certificate_templates ADD COLUMN IF NOT EXISTS unique_id_font_size INTEGER NOT NULL DEFAULT 14`);
+  await query(`ALTER TABLE certificate_templates ADD COLUMN IF NOT EXISTS unique_id_font_color TEXT NOT NULL DEFAULT '#1e293b'`);
+  await query(`ALTER TABLE certificate_templates ADD COLUMN IF NOT EXISTS unique_id_font_family TEXT NOT NULL DEFAULT 'Arial'`);
 
   await query(`
     CREATE TABLE IF NOT EXISTS certificate_approvals (
@@ -776,6 +781,12 @@ export interface StoredCertificateTemplate {
   fontSize: number;
   fontColor: string;
   fontFamily?: string;
+  uniqueIdEnabled?: boolean;
+  uniqueIdX?: number;
+  uniqueIdY?: number;
+  uniqueIdFontSize?: number;
+  uniqueIdFontColor?: string;
+  uniqueIdFontFamily?: string;
   createdAt: string;
   createdBy?: string;
 }
@@ -841,6 +852,12 @@ function rowToCertificateTemplate(row: any): StoredCertificateTemplate {
     fontSize: Number(row.font_size),
     fontColor: row.font_color,
     fontFamily: row.font_family ?? 'Arial',
+    uniqueIdEnabled: row.unique_id_enabled ?? true,
+    uniqueIdX: Number(row.unique_id_x ?? row.name_x),
+    uniqueIdY: Number(row.unique_id_y ?? Number(row.name_y) + 8),
+    uniqueIdFontSize: Number(row.unique_id_font_size ?? Math.max(14, Number(row.font_size) * 0.32)),
+    uniqueIdFontColor: row.unique_id_font_color ?? row.font_color,
+    uniqueIdFontFamily: row.unique_id_font_family ?? row.font_family ?? 'Arial',
     createdAt: new Date(row.created_at).toISOString(),
     createdBy: row.created_by ?? undefined,
   };
@@ -1019,8 +1036,8 @@ export async function getCertificateTemplateById(id: string): Promise<StoredCert
 
 export async function insertCertificateTemplate(t: StoredCertificateTemplate): Promise<StoredCertificateTemplate> {
   await query(
-    `INSERT INTO certificate_templates (id, name, event_id, image_data, name_x, name_y, font_size, font_color, font_family, created_at, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    `INSERT INTO certificate_templates (id, name, event_id, image_data, name_x, name_y, font_size, font_color, font_family, unique_id_enabled, unique_id_x, unique_id_y, unique_id_font_size, unique_id_font_color, unique_id_font_family, created_at, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
     [
       t.id,
       t.name,
@@ -1031,6 +1048,12 @@ export async function insertCertificateTemplate(t: StoredCertificateTemplate): P
       t.fontSize,
       t.fontColor,
       t.fontFamily,
+      t.uniqueIdEnabled ?? true,
+      t.uniqueIdX ?? t.nameX,
+      t.uniqueIdY ?? t.nameY + 8,
+      t.uniqueIdFontSize ?? Math.max(14, t.fontSize * 0.32),
+      t.uniqueIdFontColor ?? t.fontColor,
+      t.uniqueIdFontFamily ?? t.fontFamily ?? 'Arial',
       t.createdAt,
       t.createdBy ?? null,
     ]

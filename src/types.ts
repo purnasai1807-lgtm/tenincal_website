@@ -256,6 +256,12 @@ export interface CertificateTemplateInfo {
   fontSize: number;
   fontColor: string;
   fontFamily: string;
+  uniqueIdEnabled?: boolean;
+  uniqueIdX?: number;
+  uniqueIdY?: number;
+  uniqueIdFontSize?: number;
+  uniqueIdFontColor?: string;
+  uniqueIdFontFamily?: string;
 }
 
 export interface MyCertificate {
@@ -276,6 +282,12 @@ export interface AdminCertificateTemplate {
   fontSize: number;
   fontColor: string;
   fontFamily: string;
+  uniqueIdEnabled?: boolean;
+  uniqueIdX?: number;
+  uniqueIdY?: number;
+  uniqueIdFontSize?: number;
+  uniqueIdFontColor?: string;
+  uniqueIdFontFamily?: string;
   createdAt: string;
   createdBy?: string;
 }

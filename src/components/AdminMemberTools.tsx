@@ -384,6 +384,12 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
   const [fontSize, setFontSize] = useState(42);
   const [fontColor, setFontColor] = useState('#1e293b');
   const [fontFamily, setFontFamily] = useState('Arial');
+  const [uniqueIdEnabled, setUniqueIdEnabled] = useState(true);
+  const [uniqueIdX, setUniqueIdX] = useState(50);
+  const [uniqueIdY, setUniqueIdY] = useState(58);
+  const [uniqueIdFontSize, setUniqueIdFontSize] = useState(14);
+  const [uniqueIdFontColor, setUniqueIdFontColor] = useState('#1e293b');
+  const [uniqueIdFontFamily, setUniqueIdFontFamily] = useState('Arial');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -422,7 +428,7 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
     }
     setUploading(true);
     try {
-      await api.createCertificateTemplate({ name, eventId: eventId || undefined, imageData, nameX, nameY, fontSize, fontColor, fontFamily });
+      await api.createCertificateTemplate({ name, eventId: eventId || undefined, imageData, nameX, nameY, fontSize, fontColor, fontFamily, uniqueIdEnabled, uniqueIdX, uniqueIdY, uniqueIdFontSize, uniqueIdFontColor, uniqueIdFontFamily });
       setSuccess(`Template "${name}" uploaded.`);
       setName('');
       setImageData('');
@@ -512,6 +518,11 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
               >
                 Member Full Name
               </div>
+              {uniqueIdEnabled && (
+                <div className="absolute font-semibold" style={{ left: `${uniqueIdX}%`, top: `${uniqueIdY}%`, transform: 'translate(-50%, -50%)', fontSize: `${uniqueIdFontSize / 3}px`, color: uniqueIdFontColor, fontFamily: uniqueIdFontFamily }}>
+                  Unique ID: REGISTRATION-ID
+                </div>
+              )}
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
@@ -530,6 +541,19 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
             <label className="text-[10px] text-slate-400 font-mono">
               Font Color <input type="color" value={fontColor} onChange={(e) => setFontColor(e.target.value)} className="w-full mt-1 h-8 rounded-lg bg-slate-800 border border-slate-700" />
             </label>
+            <label className="col-span-2 flex items-center gap-2 text-[10px] text-slate-300 font-mono">
+              <input type="checkbox" checked={uniqueIdEnabled} onChange={(e) => setUniqueIdEnabled(e.target.checked)} className="accent-cyan-500" />
+              Include registration unique ID on certificate
+            </label>
+            {uniqueIdEnabled && (
+              <>
+                <label className="text-[10px] text-slate-400 font-mono">Unique ID X% <input type="number" min={0} max={100} value={uniqueIdX} onChange={(e) => setUniqueIdX(Number(e.target.value))} className="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white" /></label>
+                <label className="text-[10px] text-slate-400 font-mono">Unique ID Y% <input type="number" min={0} max={100} value={uniqueIdY} onChange={(e) => setUniqueIdY(Number(e.target.value))} className="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white" /></label>
+                <label className="text-[10px] text-slate-400 font-mono">Unique ID Size <input type="number" min={6} value={uniqueIdFontSize} onChange={(e) => setUniqueIdFontSize(Number(e.target.value))} className="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white" /></label>
+                <label className="text-[10px] text-slate-400 font-mono">Unique ID Style <select value={uniqueIdFontFamily} onChange={(e) => setUniqueIdFontFamily(e.target.value)} className="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white"><option>Arial</option><option>Georgia</option><option>Times New Roman</option><option>Verdana</option><option>Courier New</option></select></label>
+                <label className="text-[10px] text-slate-400 font-mono">Unique ID Color <input type="color" value={uniqueIdFontColor} onChange={(e) => setUniqueIdFontColor(e.target.value)} className="w-full mt-1 h-8 rounded-lg bg-slate-800 border border-slate-700" /></label>
+              </>
+            )}
           </div>
           {error && <p className="text-xs text-rose-400 flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5" />{error}</p>}
           {success && <p className="text-xs text-emerald-400 flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" />{success}</p>}
@@ -586,10 +610,8 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
                   style={{ left: `${preview.template.nameX}%`, top: `${preview.template.nameY}%`, transform: 'translate(-50%, -50%)', color: preview.template.fontColor, fontFamily: preview.template.fontFamily, fontSize: Math.max(10, preview.template.fontSize / 3) }}
                 >
                   {preview.user.fullName}
-                  <div className="mt-1" style={{ fontSize: Math.max(8, preview.template.fontSize / 4) }}>
-                    Unique ID: {preview.uniqueId}
-                  </div>
                 </div>
+                {preview.template.uniqueIdEnabled !== false && <div className="absolute text-center font-semibold" style={{ left: `${preview.template.uniqueIdX ?? preview.template.nameX}%`, top: `${preview.template.uniqueIdY ?? preview.template.nameY + 8}%`, transform: 'translate(-50%, -50%)', color: preview.template.uniqueIdFontColor ?? preview.template.fontColor, fontFamily: preview.template.uniqueIdFontFamily ?? preview.template.fontFamily, fontSize: Math.max(8, (preview.template.uniqueIdFontSize ?? preview.template.fontSize * 0.32) / 3) }}>Unique ID: {preview.uniqueId}</div>}
               </div>
               <p className="text-[11px] text-slate-300">
                 Member: <b>{preview.user.fullName}</b> · Unique ID: <b className="text-amber-300">{preview.uniqueId}</b>

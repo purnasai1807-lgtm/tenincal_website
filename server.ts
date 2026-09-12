@@ -1781,7 +1781,7 @@ app.delete('/api/admin/achievements/:id', requireAdmin, async (req: Request, res
 
 // Admin: Upload a certificate template (base64 image + name placement coordinates)
 app.post('/api/admin/certificate-templates', requireAdmin, async (req: AuthRequest, res: Response) => {
-  const { name, eventId, imageData, nameX = 50, nameY = 50, fontSize = 42, fontColor = '#1e293b', fontFamily = 'Arial' } = req.body;
+  const { name, eventId, imageData, nameX = 50, nameY = 50, fontSize = 42, fontColor = '#1e293b', fontFamily = 'Arial', uniqueIdEnabled = true, uniqueIdX = 50, uniqueIdY = 58, uniqueIdFontSize = 14, uniqueIdFontColor = fontColor, uniqueIdFontFamily = fontFamily } = req.body;
   if (!name || !imageData || typeof imageData !== 'string' || !imageData.startsWith('data:image')) {
     return res.status(400).json({ error: 'Template name and a valid base64 image (data:image/...) are required.' });
   }
@@ -1796,6 +1796,12 @@ app.post('/api/admin/certificate-templates', requireAdmin, async (req: AuthReque
     fontSize: Number(fontSize),
     fontColor: String(fontColor),
     fontFamily: String(fontFamily),
+    uniqueIdEnabled: Boolean(uniqueIdEnabled),
+    uniqueIdX: Number(uniqueIdX),
+    uniqueIdY: Number(uniqueIdY),
+    uniqueIdFontSize: Number(uniqueIdFontSize),
+    uniqueIdFontColor: String(uniqueIdFontColor),
+    uniqueIdFontFamily: String(uniqueIdFontFamily),
     createdAt: new Date().toISOString(),
     createdBy: req.user?.username,
   };
@@ -1929,7 +1935,13 @@ app.get('/api/certificates/mine', authenticateToken, async (req: AuthRequest, re
               nameY: t.nameY,
               fontSize: t.fontSize,
               fontColor: t.fontColor,
-            fontFamily: t.fontFamily,
+              fontFamily: t.fontFamily,
+              uniqueIdEnabled: t.uniqueIdEnabled,
+              uniqueIdX: t.uniqueIdX,
+              uniqueIdY: t.uniqueIdY,
+              uniqueIdFontSize: t.uniqueIdFontSize,
+              uniqueIdFontColor: t.uniqueIdFontColor,
+              uniqueIdFontFamily: t.uniqueIdFontFamily,
             }
           : null,
       };

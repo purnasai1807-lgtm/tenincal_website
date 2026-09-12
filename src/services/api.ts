@@ -413,6 +413,12 @@ export const api = {
     fontSize?: number;
     fontColor?: string;
     fontFamily?: string;
+    uniqueIdEnabled?: boolean;
+    uniqueIdX?: number;
+    uniqueIdY?: number;
+    uniqueIdFontSize?: number;
+    uniqueIdFontColor?: string;
+    uniqueIdFontFamily?: string;
   }): Promise<{ success: boolean; template: AdminCertificateTemplate }> {
     return apiFetch('/api/admin/certificate-templates', {
       method: 'POST',
