@@ -117,7 +117,10 @@ export const EventCatalog: React.FC<EventCatalogProps> = ({
         {/* Event Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {filteredEvents.map((event) => {
-            const fillPercentage = Math.min(100, Math.round((event.registeredCount / event.capacity) * 100));
+            const isAdmin = currentUser?.role === 'admin';
+            const fillPercentage = isAdmin
+              ? Math.min(100, Math.round((event.registeredCount / event.capacity) * 100))
+              : 0;
 
             return (
               <div
@@ -196,20 +199,22 @@ export const EventCatalog: React.FC<EventCatalogProps> = ({
                 {/* Bottom Capacity & Register Action */}
                 <div className="mt-6 pt-4 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   {/* Capacity Bar */}
-                  <div className="w-full sm:w-48">
-                    <div className="flex justify-between text-[11px] mb-1">
-                      <span className="text-slate-400 font-mono">Seats Filled</span>
-                      <span className="text-cyan-400 font-mono font-medium">
-                        {event.registeredCount}/{event.capacity} ({fillPercentage}%)
-                      </span>
+                  {isAdmin && (
+                    <div className="w-full sm:w-48">
+                      <div className="flex justify-between text-[11px] mb-1">
+                        <span className="text-slate-400 font-mono">Seats Filled</span>
+                        <span className="text-cyan-400 font-mono font-medium">
+                          {event.registeredCount}/{event.capacity} ({fillPercentage}%)
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-500"
+                          style={{ width: `${fillPercentage}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-500"
-                        style={{ width: `${fillPercentage}%` }}
-                      />
-                    </div>
-                  </div>
+                  )}
 
                   {/* Buttons */}
                   <div className="flex items-center gap-2 shrink-0">
