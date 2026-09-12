@@ -13,4 +13,4 @@ The default pool is bounded at 10 connections for a long-lived Railway-style
 server. Set `PG_POOL_MAX=1` for serverless deployments and tune
 `PG_IDLE_TIMEOUT_MS` and `PG_CONNECTION_TIMEOUT_MS` through environment
 variables. Schema bootstrap creates indexes for account lookup, registrations,
-attendance filters, and check-in/check-out history.
+attendance filters, and check-in/check-out history. New push
