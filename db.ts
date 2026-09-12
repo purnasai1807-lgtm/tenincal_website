@@ -15,7 +15,7 @@
 // PG_POOL_MAX=1 via env so each invocation doesn't open a new saturating
 // connection — or switch to an HTTP-based driver such as
 // @neondatabase/serverless.
-import { Pool, type QueryResultRow } from 'pg';
+import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
 export interface StoredUser {
   id: string;
@@ -68,6 +68,7 @@ export interface StoredRegistration {
   registrationId: string;
   fullName: string;
   emailEncrypted: string;
+  emailHash?: string;
   phoneEncrypted: string;
   rollNumber: string;
   year: '1st Year' | '2nd Year' | '3rd Year' | '4th Year';
@@ -182,6 +183,7 @@ export async function initDb(): Promise<void> {
       notes TEXT
     );
   `);
+  await query(`ALTER TABLE registrations ADD COLUMN IF NOT EXISTS email_hash TEXT;`);
   await query(`ALTER TABLE registrations ADD COLUMN IF NOT EXISTS qr_token TEXT;`);
   await query(`
     CREATE TABLE IF NOT EXISTS qr_scan_events (
@@ -198,6 +200,8 @@ export async function initDb(): Promise<void> {
 
   await query(`CREATE INDEX IF NOT EXISTS idx_registrations_event_id ON registrations(event_id);`);
   await query(`CREATE INDEX IF NOT EXISTS idx_registrations_event_attendance ON registrations(event_id, attended);`);
+  await query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_registrations_event_roll ON registrations(event_id, roll_number);`);
+  await query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_registrations_event_email_hash ON registrations(event_id, email_hash) WHERE email_hash IS NOT NULL;`);
   await query(`CREATE INDEX IF NOT EXISTS idx_users_lower_username ON users (lower(username));`);
   await query(`CREATE INDEX IF NOT EXISTS idx_users_lower_email ON users (lower(email));`);
 
@@ -338,6 +342,7 @@ function rowToRegistration(row: any): StoredRegistration {
     registrationId: row.registration_id,
     fullName: row.full_name,
     emailEncrypted: row.email_encrypted,
+    emailHash: row.email_hash ?? undefined,
     phoneEncrypted: row.phone_encrypted,
     rollNumber: row.roll_number,
     year: row.year,
@@ -556,15 +561,16 @@ export async function getRegistrationById(idOrRegistrationId: string): Promise<S
 export async function insertRegistration(reg: StoredRegistration): Promise<StoredRegistration> {
   await query(
     `INSERT INTO registrations (
-       id, registration_id, full_name, email_encrypted, phone_encrypted, roll_number, year, section,
+       id, registration_id, full_name, email_encrypted, email_hash, phone_encrypted, roll_number, year, section,
        event_id, event_title, ticket_tier, ticket_price, payment_status, payment_id_encrypted,
        registered_at, attended, check_in_time, notes, qr_token
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
     [
       reg.id,
       reg.registrationId,
       reg.fullName,
       reg.emailEncrypted,
+      reg.emailHash ?? null,
       reg.phoneEncrypted,
       reg.rollNumber,
       reg.year,
@@ -583,6 +589,47 @@ export async function insertRegistration(reg: StoredRegistration): Promise<Store
     ]
   );
   return reg;
+}
+
+export async function registerWithCapacity(
+  reg: StoredRegistration,
+  emailHash: string
+): Promise<'created' | 'capacity_exceeded'> {
+  const client: PoolClient = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const capacity = await client.query(
+      `UPDATE events
+       SET registered_count = registered_count + 1
+       WHERE id = $1 AND registered_count < capacity
+       RETURNING id`,
+      [reg.eventId]
+    );
+    if (capacity.rowCount !== 1) {
+      await client.query('ROLLBACK');
+      return 'capacity_exceeded';
+    }
+    await client.query(
+      `INSERT INTO registrations (
+         id, registration_id, full_name, email_encrypted, email_hash, phone_encrypted, roll_number, year, section,
+         event_id, event_title, ticket_tier, ticket_price, payment_status, payment_id_encrypted,
+         registered_at, attended, check_in_time, notes, qr_token
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+      [
+        reg.id, reg.registrationId, reg.fullName, reg.emailEncrypted, emailHash, reg.phoneEncrypted,
+        reg.rollNumber, reg.year, reg.section, reg.eventId, reg.eventTitle, reg.ticketTier,
+        reg.ticketPrice, reg.paymentStatus, reg.paymentIdEncrypted ?? null, reg.registeredAt,
+        reg.attended, reg.checkInTime ?? null, reg.notes ?? null, reg.qrToken ?? null,
+      ]
+    );
+    await client.query('COMMIT');
+    return 'created';
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function updateRegistration(

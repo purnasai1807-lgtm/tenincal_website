@@ -19,11 +19,10 @@ import {
   insertEvent,
   updateEvent as dbUpdateEvent,
   deleteEvent as dbDeleteEvent,
-  incrementEventRegisteredCount,
   getRegistrations,
   getRegistrationsByEvent,
   getRegistrationById,
-  insertRegistration,
+  registerWithCapacity,
   updateRegistration as dbUpdateRegistration,
   markRegistrationCheckedIn,
   recordQrScan,
@@ -599,31 +598,16 @@ app.post('/api/register', async (req: Request, res: Response) => {
   const cleanRoll = rollNumber.trim().toUpperCase();
   const cleanEmail = email.trim().toLowerCase();
   
-  // Duplicate check: Same roll number or same email for this specific event
-  const eventRegs = await getRegistrationsByEvent(targetEvent.id);
-  const duplicate = eventRegs.find(
-    (r) =>
-      r.rollNumber.toUpperCase() === cleanRoll || decryptField(r.emailEncrypted).toLowerCase() === cleanEmail
-  );
-  
-  if (duplicate) {
-    return res.status(409).json({
-      error: `Student with roll number ${cleanRoll} or email is already registered for "${targetEvent.title}".`,
-      duplicateRegistrationId: duplicate.registrationId,
-    });
-  }
-  
-  // Generate structured registration ID (e.g. WIDS26-00438, HACK26-00109)
-  const allRegistrations = await getRegistrations();
+  const emailHash = crypto.createHash('sha256').update(cleanEmail).digest('hex');
   const prefix = targetEvent.id.includes('wids') ? 'WIDS26' : targetEvent.id.includes('hack') ? 'HACK26' : 'SYNAPSE26';
-  const seqNumber = String(allRegistrations.length + 420).padStart(5, '0');
-  const registrationId = `${prefix}-${seqNumber}`;
+  const registrationId = `${prefix}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
   
   const newReg: StoredRegistration = {
     id: 'reg-' + crypto.randomUUID().slice(0, 8),
     registrationId,
     fullName: fullName.trim(),
     emailEncrypted: encryptField(cleanEmail),
+    emailHash,
     phoneEncrypted: encryptField(cleanPhone),
     rollNumber: cleanRoll,
     year: year,
@@ -640,8 +624,19 @@ app.post('/api/register', async (req: Request, res: Response) => {
   };
   newReg.qrToken = createEntryPassToken(newReg.registrationId, newReg.eventId);
   
-  await insertRegistration(newReg);
-  await incrementEventRegisteredCount(targetEvent.id);
+  try {
+    const result = await registerWithCapacity(newReg, emailHash);
+    if (result === 'capacity_exceeded') {
+      return res.status(409).json({ error: `Registration is closed because "${targetEvent.title}" is at capacity.` });
+    }
+  } catch (error: any) {
+    if (error?.code === '23505') {
+      return res.status(409).json({
+        error: `Student with roll number ${cleanRoll} or email is already registered for "${targetEvent.title}".`,
+      });
+    }
+    throw error;
+  }
   
   // Automated notification generated for attendee
   notifications.unshift({
