@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import rateLimit from 'express-rate-limit';
 import path from 'path';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -7,6 +8,7 @@ import {
   seedAdminIfMissing,
   getUsers,
   getUserByUsername,
+  getUserById,
   getUserByEmail,
   getUserByUsernameOrEmail,
   insertUser,
@@ -67,6 +69,29 @@ const app = express();
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.set('trust proxy', 1);
+
+const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many authentication attempts. Please try again later.' },
+});
+const registrationRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many registration attempts. Please try again later.' },
+});
+const adminRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 120,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many administrative requests. Please try again later.' },
+});
 
 // --- Security & Cryptography Configuration ---
 const JWT_SECRET = process.env.JWT_SECRET || 'synapse_wids_aceec_jwt_secure_secret_2026_key_99';
@@ -324,12 +349,46 @@ function authenticateToken(req: AuthRequest, res: Response, next: NextFunction) 
 }
 
 function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
+  adminRateLimiter(req, res, () => {
   authenticateToken(req, res, () => {
-    if (req.user?.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied. Administrative role required.' });
-    }
-    next();
+    void (async () => {
+      const currentUser = req.user ? await getUserById(req.user.id) : undefined;
+      if (!currentUser || currentUser.role !== 'admin' || currentUser.username !== req.user?.username) {
+        return res.status(403).json({ error: 'Access denied. Current administrative authorization is required.' });
+      }
+      req.user = {
+        ...req.user!,
+        role: 'admin',
+        email: currentUser.email,
+        fullName: currentUser.fullName,
+      };
+      next();
+    })().catch(next);
   });
+  });
+}
+
+async function sendPasswordResetEmail(email: string, token: string): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM_EMAIL;
+  const appUrl = process.env.APP_URL;
+  if (!apiKey || !from || !appUrl) {
+    console.warn('Password reset email not sent: RESEND_API_KEY, RESEND_FROM_EMAIL, and APP_URL are required.');
+    return;
+  }
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from,
+      to: [email],
+      subject: 'Reset your Synapse Events password',
+      html: `<p>We received a password reset request for your Synapse Events account.</p><p><a href="${appUrl.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(token)}">Reset your password</a></p><p>This link expires in 30 minutes and can be used once.</p>`,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Password reset email provider returned ${response.status}.`);
+  }
 }
 
 // --- API ROUTES ---
@@ -345,7 +404,7 @@ app.get('/api/health', (req: Request, res: Response) => {
 });
 
 // Auth: Login
-app.post('/api/auth/login', async (req: Request, res: Response) => {
+app.post('/api/auth/login', authRateLimiter, async (req: Request, res: Response) => {
   const { usernameOrEmail, password } = req.body;
   
   if (!usernameOrEmail || !password) {
@@ -388,7 +447,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 });
 
 // Auth: Register New Student Account
-app.post('/api/auth/register', async (req: Request, res: Response) => {
+app.post('/api/auth/register', authRateLimiter, async (req: Request, res: Response) => {
   const { username, email, password, fullName, rollNumber, year, section } = req.body;
   
   if (!username || !email || !password || !fullName) {
@@ -430,64 +489,6 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     section: newUser.section,
   });
 
-  // Password recovery stores only a hash of the reset token. Delivery should be
-  // handled by the deployment's email provider; the API response is generic.
-  app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
-    const identifier = typeof req.body?.usernameOrEmail === 'string'
-      ? req.body.usernameOrEmail.trim()
-      : '';
-    const user = identifier ? await getUserByUsernameOrEmail(identifier) : undefined;
-    if (user) {
-      const token = crypto.randomBytes(32).toString('hex');
-      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-      await createPasswordResetToken(
-        tokenHash,
-        user.id,
-        new Date(Date.now() + 30 * 60 * 1000).toISOString()
-      );
-      // Integrate an email provider here to send the token to the user's
-      // verified address. Never return it in the API response.
-      console.info(`Password reset requested for ${user.id}; reset token delivery is pending email configuration.`);
-    }
-    res.json({ success: true, message: 'If the account exists, password recovery instructions will be sent to the registered email.' });
-  });
-
-  app.post('/api/auth/reset-password', async (req: Request, res: Response) => {
-    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
-    const password = typeof req.body?.password === 'string' ? req.body.password : '';
-    if (!token || password.length < 6) {
-      return res.status(400).json({ error: 'A valid reset token and password of at least 6 characters are required.' });
-    }
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    const reset = await consumePasswordResetToken(tokenHash);
-    if (!reset) {
-      return res.status(400).json({ error: 'Reset token is invalid or expired.' });
-    }
-    await updateUserPassword(reset.userId, hashPassword(password));
-    res.json({ success: true, message: 'Password reset successfully. You can now sign in.' });
-  });
-
-  // Admin recovery fallback when no email provider is configured. The token is
-  // returned once and must be delivered to the user through a trusted channel.
-  app.post('/api/admin/users/:id/password-reset-token', requireAdmin, async (req: Request, res: Response) => {
-    const user = await getUsers().then((users) => users.find((candidate) => candidate.id === req.params.id));
-    if (!user) {
-      return res.status(404).json({ error: 'User not found.' });
-    }
-    const token = crypto.randomBytes(32).toString('hex');
-    await createPasswordResetToken(
-      crypto.createHash('sha256').update(token).digest('hex'),
-      user.id,
-      new Date(Date.now() + 30 * 60 * 1000).toISOString()
-    );
-    res.json({
-      success: true,
-      resetToken: token,
-      expiresInMinutes: 30,
-      message: 'Deliver this one-time token to the user through a trusted channel. It is not stored in plaintext.',
-    });
-  });
-  
   res.status(201).json({
     success: true,
     token,
@@ -504,6 +505,62 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     },
   });
 });
+
+// Password recovery stores only a hash of the reset token and emails the
+// one-time link through the configured provider.
+app.post('/api/auth/forgot-password', authRateLimiter, async (req: Request, res: Response) => {
+    const identifier = typeof req.body?.usernameOrEmail === 'string'
+      ? req.body.usernameOrEmail.trim()
+      : '';
+    const user = identifier ? await getUserByUsernameOrEmail(identifier) : undefined;
+    if (user) {
+      const token = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      await createPasswordResetToken(
+        tokenHash,
+        user.id,
+        new Date(Date.now() + 30 * 60 * 1000).toISOString()
+      );
+      await sendPasswordResetEmail(user.email, token);
+    }
+    res.json({ success: true, message: 'If the account exists, password recovery instructions will be sent to the registered email.' });
+});
+
+app.post('/api/auth/reset-password', authRateLimiter, async (req: Request, res: Response) => {
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    if (!token || password.length < 6) {
+      return res.status(400).json({ error: 'A valid reset token and password of at least 6 characters are required.' });
+    }
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const reset = await consumePasswordResetToken(tokenHash);
+    if (!reset) {
+      return res.status(400).json({ error: 'Reset token is invalid or expired.' });
+    }
+    await updateUserPassword(reset.userId, hashPassword(password));
+    res.json({ success: true, message: 'Password reset successfully. You can now sign in.' });
+});
+
+  // Admin recovery fallback when no email provider is configured. The token is
+  // returned once and must be delivered to the user through a trusted channel.
+app.post('/api/admin/users/:id/password-reset-token', requireAdmin, async (req: Request, res: Response) => {
+    const user = await getUsers().then((users) => users.find((candidate) => candidate.id === req.params.id));
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    const token = crypto.randomBytes(32).toString('hex');
+    await createPasswordResetToken(
+      crypto.createHash('sha256').update(token).digest('hex'),
+      user.id,
+      new Date(Date.now() + 30 * 60 * 1000).toISOString()
+    );
+    res.json({
+      success: true,
+      resetToken: token,
+      expiresInMinutes: 30,
+      message: 'Deliver this one-time token to the user through a trusted channel. It is not stored in plaintext.',
+});
+  });
 
 // Auth: Current User Profile
 app.get('/api/auth/me', authenticateToken, (req: AuthRequest, res: Response) => {
@@ -544,7 +601,7 @@ app.get('/api/events/:id', async (req: Request, res: Response) => {
 });
 
 // Student Event Registration (with strict validation & duplicate prevention)
-app.post('/api/register', async (req: Request, res: Response) => {
+app.post('/api/register', registrationRateLimiter, async (req: Request, res: Response) => {
   const {
     fullName,
     email,
@@ -1453,8 +1510,8 @@ const handleSimulateLoad = (req: Request, res: Response) => {
   });
 };
 
-app.post('/api/system/simulate-load', handleSimulateLoad);
-app.get('/api/system/simulate-load', handleSimulateLoad);
+app.post('/api/system/simulate-load', requireAdmin, handleSimulateLoad);
+app.get('/api/system/simulate-load', requireAdmin, handleSimulateLoad);
 
 // --- Coding Tests (Member Dashboard) ---
 

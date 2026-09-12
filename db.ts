@@ -372,6 +372,11 @@ export async function getUserByUsername(username: string): Promise<StoredUser | 
   return res.rows[0] ? rowToUser(res.rows[0]) : undefined;
 }
 
+export async function getUserById(id: string): Promise<StoredUser | undefined> {
+  const res = await query('SELECT * FROM users WHERE id = $1 LIMIT 1', [id]);
+  return res.rows[0] ? rowToUser(res.rows[0]) : undefined;
+}
+
 export async function getUserByEmail(email: string): Promise<StoredUser | undefined> {
   const res = await query('SELECT * FROM users WHERE lower(email) = lower($1) LIMIT 1', [email]);
   return res.rows[0] ? rowToUser(res.rows[0]) : undefined;
