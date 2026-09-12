@@ -27,6 +27,7 @@ export interface StoredUser {
   rollNumber?: string;
   year?: string;
   section?: string;
+  avatarUrl?: string;
   createdAt: string;
 }
 
@@ -122,9 +123,11 @@ export async function initDb(): Promise<void> {
       roll_number TEXT,
       year TEXT,
       section TEXT,
+      avatar_url TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;`);
   await query(`
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
       token_hash TEXT PRIMARY KEY,
@@ -307,6 +310,7 @@ function rowToUser(row: any): StoredUser {
     rollNumber: row.roll_number ?? undefined,
     year: row.year ?? undefined,
     section: row.section ?? undefined,
+    avatarUrl: row.avatar_url ?? undefined,
     createdAt: new Date(row.created_at).toISOString(),
   };
 }
@@ -392,8 +396,8 @@ export async function getUserByUsernameOrEmail(identifier: string): Promise<Stor
 
 export async function insertUser(user: StoredUser): Promise<StoredUser> {
   await query(
-    `INSERT INTO users (id, username, password_hash, full_name, email, role, roll_number, year, section, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    `INSERT INTO users (id, username, password_hash, full_name, email, role, roll_number, year, section, avatar_url, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [
       user.id,
       user.username,
@@ -404,6 +408,7 @@ export async function insertUser(user: StoredUser): Promise<StoredUser> {
       user.rollNumber ?? null,
       user.year ?? null,
       user.section ?? null,
+      user.avatarUrl ?? null,
       user.createdAt,
     ]
   );
@@ -412,16 +417,17 @@ export async function insertUser(user: StoredUser): Promise<StoredUser> {
 
 export async function updateUserProfile(
   id: string,
-  patch: Partial<Pick<StoredUser, 'fullName' | 'year' | 'section'>>
+  patch: Partial<Pick<StoredUser, 'fullName' | 'year' | 'section' | 'avatarUrl'>>
 ): Promise<StoredUser | undefined> {
   const res = await query(
     `UPDATE users SET
        full_name = COALESCE($2, full_name),
        year = COALESCE($3, year),
-       section = COALESCE($4, section)
+       section = COALESCE($4, section),
+       avatar_url = COALESCE($5, avatar_url)
      WHERE id = $1
      RETURNING *`,
-    [id, patch.fullName ?? null, patch.year ?? null, patch.section ?? null]
+    [id, patch.fullName ?? null, patch.year ?? null, patch.section ?? null, patch.avatarUrl ?? null]
   );
   return res.rows[0] ? rowToUser(res.rows[0]) : undefined;
 }
@@ -769,6 +775,7 @@ export interface StoredCertificateTemplate {
   nameY: number;
   fontSize: number;
   fontColor: string;
+  fontFamily?: string;
   createdAt: string;
   createdBy?: string;
 }

@@ -67,7 +67,7 @@ const configuredPort = Number.parseInt(process.env.PORT || '3000', 10);
 const PORT = Number.isInteger(configuredPort) && configuredPort > 0 ? configuredPort : 3000;
 const app = express();
 
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '7mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.set('trust proxy', 1);
 
@@ -356,6 +356,7 @@ function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
       if (!currentUser || currentUser.role !== 'admin' || currentUser.username !== req.user?.username) {
         return res.status(403).json({ error: 'Access denied. Current administrative authorization is required.' });
       }
+
       req.user = {
         ...req.user!,
         role: 'admin',
@@ -366,6 +367,29 @@ function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
     })().catch(next);
   });
   });
+}
+
+function publicUser(user: StoredUser) {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    role: user.role,
+    fullName: user.fullName,
+    rollNumber: user.rollNumber,
+    year: user.year,
+    section: user.section,
+    avatarUrl: user.avatarUrl,
+    createdAt: user.createdAt,
+  };
+}
+
+function validateAvatarUrl(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string' || value.length > 7_000_000 || !/^data:image\/(?:png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+=*$/.test(value)) {
+    throw new Error('Profile picture must be a PNG, JPG, or WebP image smaller than 5 MB.');
+  }
+  return value;
 }
 
 async function sendPasswordResetEmail(email: string, token: string): Promise<void> {
@@ -427,28 +451,19 @@ app.post('/api/auth/login', authRateLimiter, async (req: Request, res: Response)
     rollNumber: user.rollNumber,
     year: user.year,
     section: user.section,
+    avatarUrl: user.avatarUrl,
   }, 86400 * 7); // 7 days token
   
   res.json({
     success: true,
     token,
-    user: {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      role: user.role,
-      fullName: user.fullName,
-      rollNumber: user.rollNumber,
-      year: user.year,
-      section: user.section,
-      createdAt: user.createdAt,
-    },
+    user: publicUser(user),
   });
 });
 
 // Auth: Register New Student Account
 app.post('/api/auth/register', authRateLimiter, async (req: Request, res: Response) => {
-  const { username, email, password, fullName, rollNumber, year, section } = req.body;
+  const { username, email, password, fullName, rollNumber, year, section, avatarUrl } = req.body;
   
   if (!username || !email || !password || !fullName) {
     return res.status(400).json({ error: 'Full name, username, email, and password are required.' });
@@ -463,6 +478,12 @@ app.post('/api/auth/register', authRateLimiter, async (req: Request, res: Respon
     return res.status(409).json({ error: 'Username or email already exists. Please login instead.' });
   }
   
+  let validatedAvatarUrl: string | undefined;
+  try {
+    validatedAvatarUrl = validateAvatarUrl(avatarUrl);
+  } catch (error) {
+    return res.status(400).json({ error: (error as Error).message });
+  }
   const newUser: StoredUser = {
     id: 'usr-' + crypto.randomUUID().slice(0, 8),
     username: username.trim(),
@@ -473,6 +494,7 @@ app.post('/api/auth/register', authRateLimiter, async (req: Request, res: Respon
     rollNumber: rollNumber ? rollNumber.trim().toUpperCase() : undefined,
     year: year || '1st Year',
     section: section || 'A',
+    avatarUrl: validatedAvatarUrl,
     createdAt: new Date().toISOString(),
   };
   
@@ -487,22 +509,13 @@ app.post('/api/auth/register', authRateLimiter, async (req: Request, res: Respon
     rollNumber: newUser.rollNumber,
     year: newUser.year,
     section: newUser.section,
+    avatarUrl: newUser.avatarUrl,
   });
 
   res.status(201).json({
     success: true,
     token,
-    user: {
-      id: newUser.id,
-      username: newUser.username,
-      email: newUser.email,
-      role: newUser.role,
-      fullName: newUser.fullName,
-      rollNumber: newUser.rollNumber,
-      year: newUser.year,
-      section: newUser.section,
-      createdAt: newUser.createdAt,
-    },
+    user: publicUser(newUser),
   });
 });
 
@@ -564,9 +577,10 @@ app.post('/api/admin/users/:id/password-reset-token', requireAdmin, async (req: 
 
 // Auth: Current User Profile
 app.get('/api/auth/me', authenticateToken, (req: AuthRequest, res: Response) => {
-  res.json({
-    user: req.user,
-  });
+  void getUserById(req.user!.id).then((user) => {
+    if (!user) return res.status(404).json({ error: 'Account not found.' });
+    res.json({ user: publicUser(user) });
+  }).catch((error) => res.status(500).json({ error: (error as Error).message }));
 });
 
 // Auth: Logout (Server-side Token Invalidation)
@@ -1715,6 +1729,7 @@ app.get('/api/admin/tests/:id/submissions', requireAdmin, async (req: Request, r
       ...s,
       fullName: usersById.get(s.userId)?.fullName,
       rollNumber: usersById.get(s.userId)?.rollNumber,
+      avatarUrl: usersById.get(s.userId)?.avatarUrl,
     }))
   );
 });
@@ -1750,7 +1765,7 @@ app.post('/api/admin/achievements', requireAdmin, async (req: AuthRequest, res: 
     awardedBy: req.user?.username,
   };
   await insertAchievement(achievement);
-  res.status(201).json({ success: true, achievement, awardedTo: { fullName: user.fullName, rollNumber: user.rollNumber } });
+  res.status(201).json({ success: true, achievement, awardedTo: { fullName: user.fullName, rollNumber: user.rollNumber, avatarUrl: user.avatarUrl } });
 });
 
 // Admin: Revoke an achievement
@@ -1852,6 +1867,7 @@ app.get('/api/admin/certificates', requireAdmin, async (req: Request, res: Respo
       ...a,
       fullName: usersById.get(a.userId)?.fullName,
       rollNumber: usersById.get(a.userId)?.rollNumber,
+      avatarUrl: usersById.get(a.userId)?.avatarUrl,
     }))
   );
 });
@@ -1895,28 +1911,25 @@ app.get('/api/certificates/mine', authenticateToken, async (req: AuthRequest, re
 
 // Member: Update editable profile fields
 app.patch('/api/profile', authenticateToken, async (req: AuthRequest, res: Response) => {
-  const { fullName, year, section } = req.body;
+  const { fullName, year, section, avatarUrl } = req.body;
+  let validatedAvatarUrl: string | undefined;
+  try {
+    validatedAvatarUrl = validateAvatarUrl(avatarUrl);
+  } catch (error) {
+    return res.status(400).json({ error: (error as Error).message });
+  }
   const updated = await updateUserProfile(req.user!.id, {
     fullName: fullName !== undefined ? String(fullName).trim() : undefined,
     year: year !== undefined ? String(year) : undefined,
     section: section !== undefined ? String(section) : undefined,
+    avatarUrl: validatedAvatarUrl,
   });
   if (!updated) {
     return res.status(404).json({ error: 'Account not found.' });
   }
   res.json({
     success: true,
-    user: {
-      id: updated.id,
-      username: updated.username,
-      email: updated.email,
-      role: updated.role,
-      fullName: updated.fullName,
-      rollNumber: updated.rollNumber,
-      year: updated.year,
-      section: updated.section,
-      createdAt: updated.createdAt,
-    },
+    user: publicUser(updated),
   });
 });
 

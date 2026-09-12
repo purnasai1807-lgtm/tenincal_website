@@ -38,6 +38,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [rollNumber, setRollNumber] = useState('');
   const [year, setYear] = useState('1st Year');
   const [section, setSection] = useState('A');
+  const [avatarUrl, setAvatarUrl] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -64,6 +65,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           rollNumber: rollNumber.trim().toUpperCase(),
           year,
           section,
+          avatarUrl: avatarUrl || undefined,
         });
         setLoading(false);
         onAuthSuccess(res.user);
@@ -129,6 +131,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs sm:text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 font-mono"
                   />
                 </div>
+
               </div>
 
               <div>
@@ -237,6 +240,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Profile Picture (PNG, JPG, WebP; max 5 MB)</label>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 5 * 1024 * 1024) {
+                      setErrorMessage('Profile picture must be smaller than 5 MB.');
+                      e.currentTarget.value = '';
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = () => setAvatarUrl(String(reader.result));
+                    reader.readAsDataURL(file);
+                  }}
+                  className="w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-700 file:px-3 file:py-2 file:text-xs file:text-white"
                 />
               </div>
             </>

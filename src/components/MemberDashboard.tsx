@@ -118,8 +118,8 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
       {/* Member Profile Header */}
       <div className="p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-slate-900 to-cyan-950/40 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-extrabold text-2xl font-mono">
-            {currentUser.fullName.charAt(0)}
+          <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-extrabold text-2xl font-mono overflow-hidden">
+            {currentUser.avatarUrl ? <img src={currentUser.avatarUrl} alt="" className="w-full h-full object-cover" /> : currentUser.fullName.charAt(0)}
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -720,6 +720,7 @@ const ProfileTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   const [fullName, setFullName] = useState(currentUser.fullName);
   const [year, setYear] = useState(currentUser.year || '1st Year');
   const [section, setSection] = useState(currentUser.section || 'A');
+  const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -728,7 +729,7 @@ const ProfileTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     setSaving(true);
     setError(null);
     try {
-      await api.updateProfile({ fullName, year, section });
+      await api.updateProfile({ fullName, year, section, avatarUrl: avatarUrl || undefined });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e: any) {
@@ -741,6 +742,22 @@ const ProfileTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   return (
     <div className="max-w-lg space-y-5">
       <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+        <div>
+          <label className="block text-xs font-mono font-semibold uppercase text-slate-400 mb-1.5">Profile Picture</label>
+          <div className="flex items-center gap-3">
+            <div className="w-14 h-14 rounded-xl overflow-hidden bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-300 font-bold text-xl">
+              {avatarUrl ? <img src={avatarUrl} alt="" className="w-full h-full object-cover" /> : currentUser.fullName.charAt(0)}
+            </div>
+            <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              if (file.size > 5 * 1024 * 1024) { setError('Profile picture must be smaller than 5 MB.'); e.currentTarget.value = ''; return; }
+              const reader = new FileReader();
+              reader.onload = () => setAvatarUrl(String(reader.result));
+              reader.readAsDataURL(file);
+            }} className="min-w-0 flex-1 text-xs text-slate-300 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-700 file:px-2 file:py-1.5 file:text-xs file:text-white" />
+          </div>
+        </div>
         <div>
           <label className="block text-xs font-mono font-semibold uppercase text-slate-400 mb-1.5">Full Name</label>
           <input

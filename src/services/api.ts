@@ -82,6 +82,7 @@ export const api = {
     rollNumber?: string;
     year?: string;
     section?: string;
+    avatarUrl?: string;
   }) {
     const res = await apiFetch<{ success: boolean; token: string; user: User }>('/api/auth/register', {
       method: 'POST',
@@ -348,7 +349,7 @@ export const api = {
     return apiFetch<MyCertificate[]>('/api/certificates/mine');
   },
 
-  async updateProfile(payload: { fullName?: string; year?: string; section?: string }): Promise<{ success: boolean; user: User }> {
+  async updateProfile(payload: { fullName?: string; year?: string; section?: string; avatarUrl?: string }): Promise<{ success: boolean; user: User }> {
     const res = await apiFetch<{ success: boolean; user: User }>('/api/profile', {
       method: 'PATCH',
       body: JSON.stringify(payload),
