@@ -39,10 +39,23 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
     (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(endpoint, {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 30000);
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
     ...options,
     headers,
+      signal: options.signal || controller.signal,
   });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('The server took too long to respond. Please try again.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     let errorMsg = `HTTP ${response.status} ${response.statusText}`;

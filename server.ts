@@ -1785,6 +1785,9 @@ app.post('/api/admin/certificate-templates', requireAdmin, async (req: AuthReque
   if (!name || !imageData || typeof imageData !== 'string' || !imageData.startsWith('data:image')) {
     return res.status(400).json({ error: 'Template name and a valid base64 image (data:image/...) are required.' });
   }
+  if (imageData.length > 6_800_000) {
+    return res.status(413).json({ error: 'Certificate image is too large. Please use a smaller image.' });
+  }
 
   const template: StoredCertificateTemplate = {
     id: 'cert-tpl-' + crypto.randomUUID().slice(0, 8),
