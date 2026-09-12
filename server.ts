@@ -1866,7 +1866,10 @@ app.post('/api/admin/certificates/approve', requireAdmin, async (req: AuthReques
   }
 
   const registration = (await getRegistrations()).find((r) => r.rollNumber.toLowerCase() === (user.rollNumber || '').toLowerCase() && (!eventId || r.eventId === eventId));
-  const uniqueId = registration?.registrationId || `CERT-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+  if (!registration?.registrationId) {
+    return res.status(422).json({ error: 'This member must have a completed event registration before a certificate can be approved.' });
+  }
+  const uniqueId = registration.registrationId;
 
   if (!verifiedUniqueId || verifiedUniqueId !== uniqueId) {
     return res.status(409).json({ error: 'Certificate must be previewed and verified before approval.' });

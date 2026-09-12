@@ -543,7 +543,7 @@ const CertificatesManager: React.FC<{ events: EventItem[] }> = ({ events }) => {
             </label>
             <label className="col-span-2 flex items-center gap-2 text-[10px] text-slate-300 font-mono">
               <input type="checkbox" checked={uniqueIdEnabled} onChange={(e) => setUniqueIdEnabled(e.target.checked)} className="accent-cyan-500" />
-              Include registration unique ID on certificate
+              Automatically print the event registration ID on the certificate
             </label>
             {uniqueIdEnabled && (
               <>
