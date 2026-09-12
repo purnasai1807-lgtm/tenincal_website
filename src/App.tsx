@@ -289,6 +289,9 @@ export default function App() {
               lastCelebrationIdRef.current = String(nextCelebration.id || '');
               setCelebration(nextCelebration as CelebrationInfo);
             }}
+            onNotificationDeleted={(notificationId) => {
+              setNotifications((current) => current.filter((notification) => notification.id !== notificationId));
+            }}
           />
         )}
 

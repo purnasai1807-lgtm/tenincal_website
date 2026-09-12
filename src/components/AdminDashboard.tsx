@@ -49,6 +49,7 @@ interface AdminDashboardProps {
   onOpenAuth: (mode?: 'login' | 'register') => void;
   onOpenPrintRoster: (students: StudentRegistration[]) => void;
   onTriggerCelebration?: (celebration: any) => void;
+  onNotificationDeleted?: (notificationId: string) => void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -56,6 +57,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onOpenAuth,
   onOpenPrintRoster,
   onTriggerCelebration,
+  onNotificationDeleted,
 }) => {
   const [activeAdminTab, setActiveAdminTab] = useState<'events' | 'students' | 'analytics' | 'attendance-qr' | 'member-tools'>('events');
   const [selectedEventForQr, setSelectedEventForQr] = useState<string | undefined>(undefined);
@@ -227,6 +229,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       await api.deleteNotification(notification.id);
       setNotifications((current) => current.filter((item) => item.id !== notification.id));
+      onNotificationDeleted?.(notification.id);
     } catch (err: any) {
       alert(err.message || 'Failed to delete notification.');
     }
