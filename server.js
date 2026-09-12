@@ -47,6 +47,20 @@ db.run(`
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE INDEX IF NOT EXISTS events_listing_idx ON events(published, starts_at);
+  CREATE TABLE IF NOT EXISTS event_registrations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    college_year TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'CANCELLED', 'WAITLISTED')),
+    attended INTEGER NOT NULL DEFAULT 0 CHECK (attended IN (0, 1)),
+    checked_in_at TEXT,
+    checked_out_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS event_registrations_event_idx ON event_registrations(event_id, status);
+  CREATE INDEX IF NOT EXISTS event_registrations_reporting_idx ON event_registrations(college_year, status, attended, created_at);
   CREATE TABLE IF NOT EXISTS challenges (
     id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, description TEXT NOT NULL,
     language TEXT NOT NULL, starter_code TEXT NOT NULL DEFAULT '', created_by INTEGER REFERENCES users(id),
@@ -239,6 +253,20 @@ app.get('/api/events/:slug', (req, res) => {
   if (!event) return issue(res, 404, 'Event not found');
   res.json({ event });
 });
+app.post('/api/events/:id/register', requireAuth, rateLimit({ windowMs: 15 * 60 * 1000, limit: 10 }), (req, res) => {
+  const parsed = z.object({ collegeYear: z.string().trim().min(1).max(30) }).safeParse(req.body);
+  if (!parsed.success) return issue(res, 400, 'College year is required');
+  const event = sql('SELECT id FROM events WHERE id=? AND published=1').get(req.params.id);
+  if (!event) return issue(res, 404, 'Event not found');
+  try {
+    const result = sql('INSERT INTO event_registrations (event_id,user_id,college_year) VALUES (?,?,?)').run(event.id, req.user.id, parsed.data.collegeYear);
+    audit(req, 'REGISTER', 'EVENT', event.id, { registrationId: result.lastInsertRowid, collegeYear: parsed.data.collegeYear });
+    res.status(201).json({ registration: sql('SELECT * FROM event_registrations WHERE id=?').get(result.lastInsertRowid) });
+  } catch (error) {
+    if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') return issue(res, 409, 'You are already registered for this event');
+    throw error;
+  }
+});
 app.use('/api/manage', requireAuth, requireTechnicalTeam);
 app.post('/api/manage/events', (req, res) => {
   const data = parseBody(eventSchema, req, res); if (!data) return;
@@ -323,6 +351,45 @@ app.patch('/api/admin/reports/:id', (req, res) => {
   res.json({ ok: true });
 });
 app.get('/api/admin/audit-logs', (req, res) => res.json({ logs: sql('SELECT id,actor_id actorId,action,entity_type entityType,entity_id entityId,metadata,ip,created_at createdAt FROM audit_logs ORDER BY created_at DESC LIMIT 200').all() }));
+app.get('/api/admin/reports/registrations.csv', (req, res) => {
+  const filterSchema = z.object({
+    eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    attendance: z.enum(['all', 'attended', 'not_attended']).default('all'),
+    status: z.enum(['all', 'ACTIVE', 'CANCELLED', 'WAITLISTED']).default('all'),
+    collegeYear: z.string().trim().max(30).optional()
+  });
+  const parsed = filterSchema.safeParse({
+    eventDate: req.query.eventDate || undefined,
+    attendance: req.query.attendance || 'all',
+    status: req.query.status || 'all',
+    collegeYear: req.query.collegeYear || undefined
+  });
+  if (!parsed.success) return issue(res, 400, 'Invalid report filters');
+  const filters = parsed.data;
+  const conditions = [];
+  const params = {};
+  if (filters.eventDate) { conditions.push("date(e.starts_at) = @eventDate"); params.eventDate = filters.eventDate; }
+  if (filters.attendance === 'attended') conditions.push('r.attended = 1');
+  if (filters.attendance === 'not_attended') conditions.push('r.attended = 0');
+  if (filters.status !== 'all') { conditions.push('r.status = @status'); params.status = filters.status; }
+  if (filters.collegeYear) { conditions.push('r.college_year = @collegeYear'); params.collegeYear = filters.collegeYear; }
+  const rows = sql(`SELECT r.id, e.title event_title, e.starts_at event_date, u.name participant_name, u.email,
+      r.college_year, r.status, r.attended, r.checked_in_at, r.checked_out_at, r.created_at registered_at
+    FROM event_registrations r
+    JOIN events e ON e.id = r.event_id
+    JOIN users u ON u.id = r.user_id
+    ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+    ORDER BY e.starts_at DESC, r.created_at DESC`).all(params);
+  const csvCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const header = ['Registration ID', 'Event', 'Event Date', 'Participant', 'Email', 'College Year', 'Registration Status', 'Attendance', 'Checked In At', 'Checked Out At', 'Registered At'];
+  const lines = [header.map(csvCell).join(',')];
+  rows.forEach((row) => lines.push([
+    row.id, row.event_title, row.event_date, row.participant_name, row.email, row.college_year,
+    row.status, row.attended ? 'ATTENDED' : 'NOT_ATTENDED', row.checked_in_at, row.checked_out_at, row.registered_at
+  ].map(csvCell).join(',')));
+  audit(req, 'EXPORT', 'REGISTRATIONS', null, { filters, count: rows.length });
+  res.type('text/csv').attachment(`registrations-${new Date().toISOString().slice(0, 10)}.csv`).send(`\uFEFF${lines.join('\r\n')}\r\n`);
+});
 
 app.use((error, _req, res, _next) => {
   console.error(error);
