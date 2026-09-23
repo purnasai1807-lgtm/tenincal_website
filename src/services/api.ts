@@ -446,6 +446,28 @@ export const api = {
     });
   },
 
+  async updateCertificateTemplate(id: string, payload: {
+    name?: string;
+    eventId?: string;
+    imageData?: string;
+    nameX?: number;
+    nameY?: number;
+    fontSize?: number;
+    fontColor?: string;
+    fontFamily?: string;
+    uniqueIdEnabled?: boolean;
+    uniqueIdX?: number;
+    uniqueIdY?: number;
+    uniqueIdFontSize?: number;
+    uniqueIdFontColor?: string;
+    uniqueIdFontFamily?: string;
+  }): Promise<{ success: boolean; message: string; template: AdminCertificateTemplate }> {
+    return apiFetch(`/api/admin/certificate-templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
   async deleteCertificateTemplate(id: string): Promise<{ success: boolean; message: string }> {
     return apiFetch(`/api/admin/certificate-templates/${id}`, { method: 'DELETE' });
   },
