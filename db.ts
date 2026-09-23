@@ -1061,6 +1061,45 @@ export async function insertCertificateTemplate(t: StoredCertificateTemplate): P
   return t;
 }
 
+export async function updateCertificateTemplate(
+  id: string,
+  updates: Partial<Pick<StoredCertificateTemplate,
+    'name' | 'eventId' | 'imageData' | 'nameX' | 'nameY' | 'fontSize' | 'fontColor' | 'fontFamily' |
+    'uniqueIdEnabled' | 'uniqueIdX' | 'uniqueIdY' | 'uniqueIdFontSize' | 'uniqueIdFontColor' | 'uniqueIdFontFamily'
+  >>
+): Promise<StoredCertificateTemplate | undefined> {
+  const existing = await getCertificateTemplateById(id);
+  if (!existing) return undefined;
+  const merged: StoredCertificateTemplate = { ...existing, ...updates };
+  const res = await query(
+    `UPDATE certificate_templates SET
+       name = $2, event_id = $3, image_data = $4, name_x = $5, name_y = $6,
+       font_size = $7, font_color = $8, font_family = $9,
+       unique_id_enabled = $10, unique_id_x = $11, unique_id_y = $12,
+       unique_id_font_size = $13, unique_id_font_color = $14, unique_id_font_family = $15
+     WHERE id = $1
+     RETURNING *`,
+    [
+      id,
+      merged.name,
+      merged.eventId ?? null,
+      merged.imageData,
+      merged.nameX,
+      merged.nameY,
+      merged.fontSize,
+      merged.fontColor,
+      merged.fontFamily,
+      merged.uniqueIdEnabled ?? true,
+      merged.uniqueIdX ?? merged.nameX,
+      merged.uniqueIdY ?? merged.nameY + 8,
+      merged.uniqueIdFontSize ?? Math.max(14, merged.fontSize * 0.32),
+      merged.uniqueIdFontColor ?? merged.fontColor,
+      merged.uniqueIdFontFamily ?? merged.fontFamily ?? 'Arial',
+    ]
+  );
+  return res.rows[0] ? rowToCertificateTemplate(res.rows[0]) : undefined;
+}
+
 export async function deleteCertificateTemplate(id: string): Promise<boolean> {
   const res = await query('DELETE FROM certificate_templates WHERE id = $1 RETURNING id', [id]);
   return (res.rowCount ?? 0) > 0;
