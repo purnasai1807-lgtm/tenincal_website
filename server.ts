@@ -48,6 +48,7 @@ import {
   getCertificateTemplates,
   getCertificateTemplateById,
   insertCertificateTemplate,
+  updateCertificateTemplate as dbUpdateCertificateTemplate,
   deleteCertificateTemplate as dbDeleteCertificateTemplate,
   getCertificateApprovalsByUser,
   getCertificateApprovals,
@@ -1811,6 +1812,58 @@ app.get('/api/certificate-templates/:id', authenticateToken, async (req: Request
     return res.status(404).json({ error: 'Certificate template not found.' });
   }
   res.json(template);
+});
+
+// Admin: Update a certificate template (e.g. toggle/reposition the Unique ID overlay)
+app.put('/api/admin/certificate-templates/:id', requireAdmin, async (req: Request, res: Response) => {
+  const existing = await getCertificateTemplateById(req.params.id);
+  if (!existing) {
+    return res.status(404).json({ error: 'Certificate template not found.' });
+  }
+
+  const {
+    name,
+    eventId,
+    imageData,
+    nameX,
+    nameY,
+    fontSize,
+    fontColor,
+    fontFamily,
+    uniqueIdEnabled,
+    uniqueIdX,
+    uniqueIdY,
+    uniqueIdFontSize,
+    uniqueIdFontColor,
+    uniqueIdFontFamily,
+  } = req.body;
+
+  if (imageData !== undefined && (typeof imageData !== 'string' || !imageData.startsWith('data:image'))) {
+    return res.status(400).json({ error: 'imageData must be a valid base64 image (data:image/...).' });
+  }
+
+  const updated = await dbUpdateCertificateTemplate(req.params.id, {
+    name: name !== undefined ? String(name).trim() : undefined,
+    eventId: eventId !== undefined ? (eventId || undefined) : undefined,
+    imageData: imageData !== undefined ? imageData : undefined,
+    nameX: nameX !== undefined ? Number(nameX) : undefined,
+    nameY: nameY !== undefined ? Number(nameY) : undefined,
+    fontSize: fontSize !== undefined ? Number(fontSize) : undefined,
+    fontColor: fontColor !== undefined ? String(fontColor) : undefined,
+    fontFamily: fontFamily !== undefined ? String(fontFamily) : undefined,
+    uniqueIdEnabled: uniqueIdEnabled !== undefined ? Boolean(uniqueIdEnabled) : undefined,
+    uniqueIdX: uniqueIdX !== undefined ? Number(uniqueIdX) : undefined,
+    uniqueIdY: uniqueIdY !== undefined ? Number(uniqueIdY) : undefined,
+    uniqueIdFontSize: uniqueIdFontSize !== undefined ? Number(uniqueIdFontSize) : undefined,
+    uniqueIdFontColor: uniqueIdFontColor !== undefined ? String(uniqueIdFontColor) : undefined,
+    uniqueIdFontFamily: uniqueIdFontFamily !== undefined ? String(uniqueIdFontFamily) : undefined,
+  });
+
+  res.json({
+    success: true,
+    message: `Template "${updated?.name ?? existing.name}" has been updated.`,
+    template: updated,
+  });
 });
 
 // Admin: Delete a certificate template
